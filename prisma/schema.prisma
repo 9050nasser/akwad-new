@@ -1,0 +1,441 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id               String   @id @default(cuid())
+  name             String
+  /// مفتاح فريد لتسجيل الدخول (مثل default لأدمن المنصة، أو رمز للعميل).
+  slug             String   @unique
+  /// شركة المنصة الوهمية — لا تحتوي على بيانات تشغيل للعميل.
+  isPlatformTenant Boolean  @default(false)
+  licenseExpiresAt DateTime
+  maxEmployees     Int      @default(500)
+  maxDevices       Int      @default(20)
+  phone            String?
+  email            String?
+  address          String?
+  taxNumber        String?
+  /// مسار عام للشعار (مثل /uploads/company-logos/xxx.png) — يُعرض في التقارير.
+  logoPath         String?
+  /// هاتف جهة الاتصال لدى العميل (لأدمن المنصة).
+  clientPhone      String?
+  /// الوسيط / المبيعات
+  brokerName       String?
+  brokerPhone      String?
+  /// تفعيل تقارير الرواتب من البصمة لهذه الشركة.
+  enablePayroll    Boolean  @default(false)
+  /// إيقاف دخول العميل (هولد) — مثلاً عدم السداد؛ يُدار من أدمن المنصة فقط.
+  onHold           Boolean  @default(false)
+  /// IANA مثل Africa/Cairo — للعرض والتقارير لاحقاً
+  timezone         String?  @default("Africa/Cairo")
+  /// ar | en — عند غياب تفضيل المستخدم في الكوكي
+  defaultLocale    String   @default("ar")
+  /// 0 = الأحد … 6 = السبت (أول أسبوع التقويم في التقارير لاحقاً)
+  weekStartsOn     Int      @default(6)
+  lateGraceMinutes Int      @default(0)
+  punchDedupeMinutes Int    @default(0)
+  fridayIsWorkday  Boolean  @default(true)
+  overtimeAfterMinutes Int  @default(0)
+  overtimeRoundMinutes Int  @default(15)
+  currency         String   @default("SAR")
+  currencyDecimals Int      @default(2)
+  payrollPeriod    String   @default("monthly")
+  payrollClosingDay Int     @default(25)
+  reportHeaderLine String?
+  reportFooterLine String?
+  shellShortName   String?
+  minPasswordLength Int     @default(6)
+  /// مدة جلسة تسجيل الدخول (1–30 يوماً)
+  sessionDays      Int      @default(7)
+  smtpHost         String?
+  smtpPort         Int?
+  smtpUser         String?
+  smtpFromEmail    String?
+  defaultReportBranchId String?
+  defaultReportBranch   Branch? @relation("CompanyDefaultReportBranch", fields: [defaultReportBranchId], references: [id], onDelete: SetNull)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  branches    Branch[]
+  users       User[]
+  workSchedules WorkSchedule[]
+  jobTitles        JobTitle[]
+  nationalities    Nationality[]
+  projects         Project[]
+  workDuties       WorkDuty[]
+  holidays         Holiday[]
+  leaveTypes       LeaveType[]
+  employeeGroups   EmployeeGroup[]
+  payrollVacations          PayrollVacation[]
+  payrollManualDeductions   PayrollManualDeduction[]
+  payrollManualBonuses      PayrollManualBonus[]
+  roles                     Role[]
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String
+  code      String?
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  devices   FingerprintDevice[]
+  employees Employee[]
+  events    AttendanceEvent[]
+  companiesDefaultReportFor Company[] @relation("CompanyDefaultReportBranch")
+}
+
+model JobTitle {
+  id        String     @id @default(cuid())
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  employees Employee[]
+
+  @@index([companyId])
+}
+
+model Project {
+  id        String     @id @default(cuid())
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  code      String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  employees Employee[]
+
+  @@index([companyId])
+}
+
+model Nationality {
+  id        String     @id @default(cuid())
+  companyId String
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  employees Employee[]
+
+  @@index([companyId])
+}
+
+/// مهام / أنواع مهام تشغيلية
+model WorkDuty {
+  id          String     @id @default(cuid())
+  companyId   String
+  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  employees   Employee[]
+
+  @@index([companyId])
+}
+
+model WorkSchedule {
+  id                   String               @id @default(cuid())
+  companyId            String
+  company              Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name                 String
+  description          String?
+  /// دوام مفتوح: بدون نوافذ ثابتة؛ أول حركة مرحّلة = دخول وآخر حركة = خروج (في التقارير).
+  isOpen               Boolean              @default(false)
+  /// دوام ممتد: السماح بأن تكون نهاية الدوام بعد منتصف الليل (نهاية اليوم التالي لنفس يوم البداية).
+  extendShiftNextDay   Boolean              @default(false)
+  /// للدوام المفتوح: هدف ساعات العمل اليومية بالدقائق (مثلاً ٨ ساعات = ٤٨٠). اختياري.
+  expectedDailyMinutes Int?
+  /// عند التعطيل لا يُحسب وقت إضافي من فرق ساعات الدوام المفتوح.
+  enableOvertimeCalc   Boolean              @default(true)
+  /// خصم دقائق نقص العمل (مقابل الهدف) من دقائق الإضافي في نفس اليوم.
+  deductLateFromOvertime Boolean            @default(false)
+  /// دقائق السماح بعد بداية الشفت قبل احتساب التأخير في الدخول.
+  graceInMinutes       Int                  @default(0)
+  /// دقائق السماح قبل نهاية الشفت (لاحتساب انصراف مبكر / خروج).
+  graceOutMinutes      Int                  @default(0)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  days                 WorkScheduleDay[]
+  employees            Employee[]
+}
+
+model WorkScheduleDay {
+  id           String         @id @default(cuid())
+  scheduleId   String
+  schedule     WorkSchedule   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  weekday      Int /// 0=Sunday .. 6=Saturday
+  /// ترتيب الشفت لنفس اليوم (٠، ١، …) لدعم أكثر من شفت في يوم واحد.
+  segmentOrder Int            @default(0)
+  startTime    String /// "08:00"
+  endTime      String /// "16:00"
+  /// دقائق السماح بعد بداية هذا الشفت (إن صفر يُرجَع لقيمة الجدول العامة graceInMinutes).
+  graceInMinutes  Int         @default(0)
+  /// دقائق السماح قبل نهاية هذا الشفت (إن صفر يُرجَع للجدول العام graceOutMinutes).
+  graceOutMinutes Int         @default(0)
+}
+
+model EmployeeGroup {
+  id        String                 @id @default(cuid())
+  companyId String
+  company   Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+  members   EmployeeGroupMember[]
+  /// موظفون يُعرَف قسمُهم الرئيسي بهذا السجل (من شاشة الموظفين).
+  employeesAsPrimaryDepartment Employee[] @relation("EmployeePrimaryDepartment")
+
+  @@index([companyId])
+}
+
+model EmployeeGroupMember {
+  groupId    String
+  employeeId String
+  group      EmployeeGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  employee   Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, employeeId])
+}
+
+model LeaveType {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  paid      Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  leaves    Leave[]
+
+  @@index([companyId])
+}
+
+model Holiday {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  date      DateTime
+  annual    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+}
+
+model Employee {
+  id              String    @id @default(cuid())
+  fullName        String
+  employeeCode    String?
+  /// معرف المستخدم على جهاز ZK (PIN/UserId)
+  deviceUserId    Int?
+  branchId        String
+  branch          Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  jobTitleId      String?
+  jobTitle        JobTitle? @relation(fields: [jobTitleId], references: [id])
+  projectId       String?
+  project         Project?  @relation(fields: [projectId], references: [id])
+  nationalityId   String?
+  nationality     Nationality? @relation(fields: [nationalityId], references: [id])
+  workDutyId      String?
+  workDuty        WorkDuty? @relation(fields: [workDutyId], references: [id])
+  workScheduleId  String?
+  workSchedule    WorkSchedule? @relation(fields: [workScheduleId], references: [id])
+  /// القسم (نفس سجلات «الأقسام») — اختياري.
+  departmentGroupId String?
+  departmentGroup   EmployeeGroup? @relation("EmployeePrimaryDepartment", fields: [departmentGroupId], references: [id], onDelete: SetNull)
+  hireDate        DateTime?
+  /// الراتب الأساسي الشهري (لحساب الرواتب؛ يُقسّم مع البدلات على ٣٠ يوماً و٨ ساعات يومية لاشتقاق قيمة الدقيقة).
+  baseSalaryMonthly Float?
+  /// بدل سكن شهري (يُدرج في المجموع والتقارير).
+  allowanceHousingMonthly   Float?
+  /// بدل مواصلات شهري.
+  allowanceTransportMonthly Float?
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  groups   EmployeeGroupMember[]
+  events   AttendanceEvent[]
+  leaves   Leave[]
+  perms    PermissionSlot[]
+  payrollVacations        PayrollVacation[]
+  payrollManualDeductions PayrollManualDeduction[]
+  payrollManualBonuses    PayrollManualBonus[]
+
+  @@unique([branchId, employeeCode])
+  @@index([departmentGroupId])
+}
+
+/// إجازة مسجلة ضمن موديول الرواتب (للعرض في التقرير والقسيمة).
+model PayrollVacation {
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  startDate  DateTime
+  endDate    DateTime
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@index([companyId, startDate])
+  @@index([employeeId])
+}
+
+/// خصم يدوي على راتب موظف لشهر محدد (YYYY-MM).
+model PayrollManualDeduction {
+  id                  String   @id @default(cuid())
+  companyId           String
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId          String
+  employee            Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  amount              Float
+  reason              String
+  deductionPeriodYm   String
+  createdAt           DateTime @default(now())
+
+  @@index([companyId, deductionPeriodYm])
+  @@index([employeeId])
+}
+
+/// إضافة يدوية (مكافأة) على راتب موظف لشهر محدد (YYYY-MM).
+model PayrollManualBonus {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeId     String
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  amount         Float
+  reason         String
+  bonusPeriodYm  String
+  createdAt      DateTime @default(now())
+
+  @@index([companyId, bonusPeriodYm])
+  @@index([employeeId])
+}
+
+model UnknownDeviceUser {
+  id         String            @id @default(cuid())
+  deviceId   String
+  device     FingerprintDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  zkUserId   Int
+  lastSeenAt DateTime
+  note       String?
+
+  @@unique([deviceId, zkUserId])
+}
+
+model FingerprintDevice {
+  id           String    @id @default(cuid())
+  name         String
+  model        String    @default("ZK")
+  ip           String
+  port         Int       @default(4370)
+  serialNumber String?
+  branchId     String
+  branch       Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  enabled      Boolean   @default(true)
+  lastSyncAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  events  AttendanceEvent[]
+  unknown UnknownDeviceUser[]
+}
+
+model AttendanceEvent {
+  id           String            @id @default(cuid())
+  employeeId   String?
+  employee     Employee?         @relation(fields: [employeeId], references: [id])
+  deviceId     String?
+  device       FingerprintDevice? @relation(fields: [deviceId], references: [id])
+  branchId     String
+  branch       Branch            @relation(fields: [branchId], references: [id])
+  at           DateTime
+  /// CHECK_IN | CHECK_OUT
+  kind         String
+  /// DEVICE | MANUAL
+  source       String            @default("DEVICE")
+  isPosted     Boolean           @default(false)
+  note         String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+model Leave {
+  id          String    @id @default(cuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
+  startAt     DateTime
+  endAt       DateTime
+  note        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model PermissionSlot {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date       DateTime
+  startTime  String
+  endTime    String
+  reason     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Role {
+  id        String           @id @default(cuid())
+  companyId String
+  company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  users     User[]
+  perms     RolePermission[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([companyId, name])
+}
+
+model RolePermission {
+  id       String @id @default(cuid())
+  roleId   String
+  role     Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  resource String
+  action   String
+
+  @@unique([roleId, resource, action])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String
+  passwordHash String?
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  roleId       String
+  role         Role     @relation(fields: [roleId], references: [id])
+  isPlatformAdmin Boolean @default(false)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([companyId, email])
+}
