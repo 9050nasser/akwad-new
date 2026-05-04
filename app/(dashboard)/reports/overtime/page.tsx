@@ -1,10 +1,14 @@
 import { PageFrame } from "@/components/page-frame";
+import { ReportColumnsToolbar } from "@/components/report-columns-toolbar";
+import { ReportEmployeeFilterFields } from "@/components/report-employee-filter-fields";
 import { Label, PrimaryButton, fieldClass } from "@/components/ui-fields";
 import { monthRangeInputs } from "@/lib/default-range";
 import { firstQuery } from "@/lib/flash";
-import { formatDateTime } from "@/lib/format";
+import { formatReportDateTime } from "@/lib/format";
+import { OVERTIME_OPEN_COLUMN_GROUPS, OVERTIME_OUTS_COLUMN_GROUPS } from "@/lib/report-column-config";
+import { getReportColumnState } from "@/lib/report-column-state";
+import { buildEmployeeFiltersFromSearchParams, loadReportFilterDropdowns } from "@/lib/report-employee-filters";
 import { getMovements, getOpenScheduleBalanceSummary, parseRangeFromSearch } from "@/lib/reports";
-import { prisma } from "@/lib/prisma";
 import { requireTenantSession } from "@/lib/tenant";
 
 export default async function OvertimeReportPage({
@@ -19,41 +23,40 @@ export default async function OvertimeReportPage({
   const fromStr = firstQuery(sp.from) ?? defaults.from;
   const toStr = firstQuery(sp.to) ?? defaults.to;
   const branchId = firstQuery(sp.branchId) || undefined;
+  const employeeFilters = buildEmployeeFiltersFromSearchParams(sp);
   const { from, to } = parseRangeFromSearch(fromStr, toStr);
 
-  const rows = await getMovements({ companyId, from, to, branchId, posted: "yes" });
+  const [rows, openBalance, dropdowns, colOpen, colOuts] = await Promise.all([
+    getMovements({ companyId, from, to, branchId, posted: "yes", employeeFilters }),
+    getOpenScheduleBalanceSummary({ companyId, from, to, branchId, employeeFilters }),
+    loadReportFilterDropdowns(companyId),
+    getReportColumnState("/reports/overtime", "overtime-open", sp),
+    getReportColumnState("/reports/overtime", "overtime-outs", sp),
+  ]);
   const outs = rows.filter((r) => r.kind === "CHECK_OUT" && r.employeeId);
-  const openBalance = await getOpenScheduleBalanceSummary({ companyId, from, to, branchId });
-
-  const branches = await prisma.branch.findMany({ where: { companyId }, orderBy: { name: "asc" } });
+  const vOpen = (id: string) => colOpen.visibleIds.includes(id);
+  const vOut = (id: string) => colOuts.visibleIds.includes(id);
 
   return (
-    <PageFrame
-      exportFileSlug="overtime"
-      title="تقرير الإضافي"
-      subtitle="بصمات خروج مرحّلة، وملخص إضافي/نقص ساعات للموظفين على «دوام مفتوح» مع هدف يومي محدد في الجدول."
-    >
-      <form method="get" className="grid gap-4 md:grid-cols-4">
-        <div>
-          <Label htmlFor="from">من</Label>
-          <input id="from" name="from" type="date" className={fieldClass} defaultValue={fromStr} />
-        </div>
-        <div>
-          <Label htmlFor="to">إلى</Label>
-          <input id="to" name="to" type="date" className={fieldClass} defaultValue={toStr} />
-        </div>
-        <div>
-          <Label htmlFor="branchId">الفرع</Label>
-          <select id="branchId" name="branchId" className={fieldClass} defaultValue={branchId ?? ""}>
-            <option value="">كل الفروع</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-end">
+    <PageFrame exportFileSlug="overtime" title="تقرير الإضافي">
+      <form method="get" className="space-y-4">
+        <ReportEmployeeFilterFields
+          dropdowns={dropdowns}
+          defaults={{ branchId: branchId ?? "", ...employeeFilters }}
+          leadingSlot={
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <Label htmlFor="from">من</Label>
+                <input id="from" name="from" type="date" className={fieldClass} defaultValue={fromStr} />
+              </div>
+              <div>
+                <Label htmlFor="to">إلى</Label>
+                <input id="to" name="to" type="date" className={fieldClass} defaultValue={toStr} />
+              </div>
+            </div>
+          }
+        />
+        <div className="flex flex-wrap items-end gap-3 print:hidden">
           <PrimaryButton type="submit">عرض</PrimaryButton>
         </div>
       </form>
@@ -65,23 +68,35 @@ export default async function OvertimeReportPage({
             يُحسب من أول بصمة إلى آخر بصمة في اليوم مقابل الهدف اليومي، مع احترام خيارات السماح وخصم التأخير من
             الإضافي إن وُجدت في جدول الدوام.
           </p>
+          <div className="mb-2 flex flex-wrap items-center justify-end gap-2 print:hidden">
+            <ReportColumnsToolbar
+              slug="overtime-open"
+              groups={OVERTIME_OPEN_COLUMN_GROUPS}
+              visibleIds={colOpen.visibleIds}
+              redirectTo={colOpen.returnUrl}
+            />
+          </div>
           <div className="table-container rounded-xl border border-slate-200">
             <table className="min-w-full text-right text-sm">
               <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">الموظف</th>
-                  <th className="px-4 py-3">الفرع</th>
-                  <th className="px-4 py-3">دقائق نقص</th>
-                  <th className="px-4 py-3">دقائق إضافي صافي</th>
+                  {vOpen("name") ? <th className="px-4 py-3">الموظف</th> : null}
+                  {vOpen("branch") ? <th className="px-4 py-3">الفرع</th> : null}
+                  {vOpen("shortage") ? <th className="px-4 py-3">دقائق نقص</th> : null}
+                  {vOpen("netOvertime") ? <th className="px-4 py-3">دقائق إضافي صافي</th> : null}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {openBalance.rows.map((r) => (
                   <tr key={r.employeeId} className="hover:bg-slate-50/80">
-                    <td className="px-4 py-3 font-medium text-slate-900">{r.fullName}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.branch}</td>
-                    <td className="px-4 py-3 text-slate-600 tabular-nums">{r.shortageMinutes}</td>
-                    <td className="px-4 py-3 text-slate-600 tabular-nums">{r.netOvertimeMinutes}</td>
+                    {vOpen("name") ? <td className="px-4 py-3 font-medium text-slate-900">{r.fullName}</td> : null}
+                    {vOpen("branch") ? <td className="px-4 py-3 text-slate-600">{r.branch}</td> : null}
+                    {vOpen("shortage") ? (
+                      <td className="px-4 py-3 text-slate-600 tabular-nums">{r.shortageMinutes}</td>
+                    ) : null}
+                    {vOpen("netOvertime") ? (
+                      <td className="px-4 py-3 text-slate-600 tabular-nums">{r.netOvertimeMinutes}</td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -94,20 +109,28 @@ export default async function OvertimeReportPage({
         <h2 className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-900">
           بصمات خروج مرحّلة
         </h2>
+        <div className="flex flex-wrap items-center justify-end gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2 print:hidden">
+          <ReportColumnsToolbar
+            slug="overtime-outs"
+            groups={OVERTIME_OUTS_COLUMN_GROUPS}
+            visibleIds={colOuts.visibleIds}
+            redirectTo={colOuts.returnUrl}
+          />
+        </div>
         <table className="min-w-full text-right text-sm">
           <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">الوقت</th>
-              <th className="px-4 py-3">الموظف</th>
-              <th className="px-4 py-3">الفرع</th>
+              {vOut("at") ? <th className="px-4 py-3">الوقت</th> : null}
+              {vOut("name") ? <th className="px-4 py-3">الموظف</th> : null}
+              {vOut("branch") ? <th className="px-4 py-3">الفرع</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
             {outs.slice(0, 300).map((r) => (
               <tr key={r.id} className="hover:bg-slate-50/80">
-                <td className="px-4 py-3 text-slate-800">{formatDateTime(r.at)}</td>
-                <td className="px-4 py-3 font-medium text-slate-900">{r.employee?.fullName ?? "—"}</td>
-                <td className="px-4 py-3 text-slate-600">{r.branch.name}</td>
+                {vOut("at") ? <td className="px-4 py-3 text-slate-800 tabular-nums">{formatReportDateTime(r.at)}</td> : null}
+                {vOut("name") ? <td className="px-4 py-3 font-medium text-slate-900">{r.employee?.fullName ?? "—"}</td> : null}
+                {vOut("branch") ? <td className="px-4 py-3 text-slate-600">{r.branch.name}</td> : null}
               </tr>
             ))}
           </tbody>

@@ -1,8 +1,16 @@
 import { PageFrame } from "@/components/page-frame";
+import { ReportColumnsToolbar } from "@/components/report-columns-toolbar";
 import { Label, PrimaryButton, fieldClass } from "@/components/ui-fields";
 import { monthRangeInputs } from "@/lib/default-range";
+import { parseDateOnly } from "@/lib/day-range";
 import { firstQuery } from "@/lib/flash";
-import { formatDateTime } from "@/lib/format";
+import { formatReportDateOnly, formatReportDateTime, formatReportTimeOnly } from "@/lib/format";
+import {
+  EMPLOYEE_LEAVES_COLUMN_GROUPS,
+  EMPLOYEE_MOVEMENTS_COLUMN_GROUPS,
+  EMPLOYEE_PERMISSIONS_COLUMN_GROUPS,
+} from "@/lib/report-column-config";
+import { getReportColumnState } from "@/lib/report-column-state";
 import { getEmployeeReport, parseRangeFromSearch } from "@/lib/reports";
 import { prisma } from "@/lib/prisma";
 import { requireTenantSession } from "@/lib/tenant";
@@ -21,11 +29,16 @@ export default async function SingleEmployeeReportPage({
   const employeeId = firstQuery(sp.employeeId) ?? "";
   const { from, to } = parseRangeFromSearch(fromStr, toStr);
 
-  const employees = await prisma.employee.findMany({
-    where: { active: true, branch: { companyId } },
-    orderBy: { fullName: "asc" },
-    include: { branch: true },
-  });
+  const [employees, colMovements, colLeaves, colPerms] = await Promise.all([
+    prisma.employee.findMany({
+      where: { active: true, branch: { companyId } },
+      orderBy: { fullName: "asc" },
+      include: { branch: true },
+    }),
+    getReportColumnState("/reports/employee", "employee-movements", sp),
+    getReportColumnState("/reports/employee", "employee-leaves", sp),
+    getReportColumnState("/reports/employee", "employee-permissions", sp),
+  ]);
 
   const resolvedEmployeeId =
     employeeId || (employees.length > 0 ? employees[0].id : "");
@@ -34,13 +47,16 @@ export default async function SingleEmployeeReportPage({
     ? await getEmployeeReport({ companyId, employeeId: resolvedEmployeeId, from, to })
     : null;
 
+  const vm = (id: string) => colMovements.visibleIds.includes(id);
+  const vl = (id: string) => colLeaves.visibleIds.includes(id);
+  const vp = (id: string) => colPerms.visibleIds.includes(id);
+  const emptyM = Math.max(1, colMovements.visibleIds.length);
+  const emptyL = Math.max(1, colLeaves.visibleIds.length);
+  const emptyP = Math.max(1, colPerms.visibleIds.length);
+
   return (
-    <PageFrame
-      exportFileSlug="employee"
-      title="تقرير موظف"
-      subtitle="حركات وإجازات وأذونات لموظف واحد خلال فترة محددة."
-    >
-      <form method="get" className="grid gap-4 md:grid-cols-4">
+    <PageFrame exportFileSlug="employee" title="تقرير موظف">
+      <form method="get" className="grid gap-4 md:grid-cols-4 print:hidden">
         <div className="md:col-span-2">
           <Label htmlFor="employeeId">الموظف</Label>
           <select id="employeeId" name="employeeId" className={fieldClass} defaultValue={resolvedEmployeeId}>
@@ -78,74 +94,142 @@ export default async function SingleEmployeeReportPage({
           </div>
 
           <div>
-            <h2 className="mb-2 text-sm font-semibold text-slate-900">الحركات</h2>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-900">الحركات (ملخص يومي)</h2>
+              <div className="print:hidden">
+                <ReportColumnsToolbar
+                  slug="employee-movements"
+                  groups={EMPLOYEE_MOVEMENTS_COLUMN_GROUPS}
+                  visibleIds={colMovements.visibleIds}
+                  redirectTo={colMovements.returnUrl}
+                />
+              </div>
+            </div>
             <div className="table-container rounded-xl border border-slate-200">
               <table className="min-w-full text-right text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-3 py-2">الوقت</th>
-                    <th className="px-3 py-2">النوع</th>
-                    <th className="px-3 py-2">مرحّل</th>
+                    {vm("date") ? <th className="px-3 py-2">التاريخ</th> : null}
+                    {vm("firstIn") ? <th className="px-3 py-2">أول دخول</th> : null}
+                    {vm("lastOut") ? <th className="px-3 py-2">آخر خروج</th> : null}
+                    {vm("posted") ? <th className="px-3 py-2">مرحّل</th> : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {data.events.map((e) => (
-                    <tr key={e.id}>
-                      <td className="px-3 py-2">{formatDateTime(e.at)}</td>
-                      <td className="px-3 py-2">{e.kind === "CHECK_IN" ? "دخول" : "خروج"}</td>
-                      <td className="px-3 py-2">{e.isPosted ? "نعم" : "لا"}</td>
+                  {data.movementDays.length === 0 ? (
+                    <tr>
+                      <td colSpan={emptyM} className="px-3 py-6 text-center text-slate-500">
+                        لا حركات في الفترة.
+                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    data.movementDays.map((d) => (
+                      <tr key={d.dateKey}>
+                        {vm("date") ? (
+                          <td className="px-3 py-2 tabular-nums text-slate-800">
+                            {formatReportDateOnly(parseDateOnly(d.dateKey))}
+                          </td>
+                        ) : null}
+                        {vm("firstIn") ? (
+                          <td className="px-3 py-2 tabular-nums text-slate-800">
+                            {d.firstIn ? formatReportTimeOnly(d.firstIn) : "—"}
+                          </td>
+                        ) : null}
+                        {vm("lastOut") ? (
+                          <td className="px-3 py-2 tabular-nums text-slate-800">
+                            {d.lastOut ? formatReportTimeOnly(d.lastOut) : "—"}
+                          </td>
+                        ) : null}
+                        {vm("posted") ? <td className="px-3 py-2">{d.allPosted ? "نعم" : "لا"}</td> : null}
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
 
           <div>
-            <h2 className="mb-2 text-sm font-semibold text-slate-900">الإجازات</h2>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-900">الإجازات</h2>
+              <div className="print:hidden">
+                <ReportColumnsToolbar
+                  slug="employee-leaves"
+                  groups={EMPLOYEE_LEAVES_COLUMN_GROUPS}
+                  visibleIds={colLeaves.visibleIds}
+                  redirectTo={colLeaves.returnUrl}
+                />
+              </div>
+            </div>
             <div className="table-container rounded-xl border border-slate-200">
               <table className="min-w-full text-right text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-3 py-2">النوع</th>
-                    <th className="px-3 py-2">من</th>
-                    <th className="px-3 py-2">إلى</th>
+                    {vl("type") ? <th className="px-3 py-2">النوع</th> : null}
+                    {vl("start") ? <th className="px-3 py-2">من</th> : null}
+                    {vl("end") ? <th className="px-3 py-2">إلى</th> : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {data.leaves.map((l) => (
-                    <tr key={l.id}>
-                      <td className="px-3 py-2">{l.leaveType.name}</td>
-                      <td className="px-3 py-2">{formatDateTime(l.startAt)}</td>
-                      <td className="px-3 py-2">{formatDateTime(l.endAt)}</td>
+                  {data.leaves.length === 0 ? (
+                    <tr>
+                      <td colSpan={emptyL} className="px-3 py-6 text-center text-slate-500">
+                        لا إجازات في الفترة.
+                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    data.leaves.map((l) => (
+                      <tr key={l.id}>
+                        {vl("type") ? <td className="px-3 py-2">{l.leaveType.name}</td> : null}
+                        {vl("start") ? <td className="px-3 py-2 tabular-nums">{formatReportDateTime(l.startAt)}</td> : null}
+                        {vl("end") ? <td className="px-3 py-2 tabular-nums">{formatReportDateTime(l.endAt)}</td> : null}
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
 
           <div>
-            <h2 className="mb-2 text-sm font-semibold text-slate-900">الأذونات</h2>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-900">الأذونات</h2>
+              <div className="print:hidden">
+                <ReportColumnsToolbar
+                  slug="employee-permissions"
+                  groups={EMPLOYEE_PERMISSIONS_COLUMN_GROUPS}
+                  visibleIds={colPerms.visibleIds}
+                  redirectTo={colPerms.returnUrl}
+                />
+              </div>
+            </div>
             <div className="table-container rounded-xl border border-slate-200">
               <table className="min-w-full text-right text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-3 py-2">اليوم</th>
-                    <th className="px-3 py-2">من</th>
-                    <th className="px-3 py-2">إلى</th>
-                    <th className="px-3 py-2">السبب</th>
+                    {vp("day") ? <th className="px-3 py-2">اليوم</th> : null}
+                    {vp("start") ? <th className="px-3 py-2">من</th> : null}
+                    {vp("end") ? <th className="px-3 py-2">إلى</th> : null}
+                    {vp("reason") ? <th className="px-3 py-2">السبب</th> : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {data.perms.map((p) => (
-                    <tr key={p.id}>
-                      <td className="px-3 py-2">{formatDateTime(p.date)}</td>
-                      <td className="px-3 py-2">{p.startTime}</td>
-                      <td className="px-3 py-2">{p.endTime}</td>
-                      <td className="px-3 py-2">{p.reason ?? "—"}</td>
+                  {data.perms.length === 0 ? (
+                    <tr>
+                      <td colSpan={emptyP} className="px-3 py-6 text-center text-slate-500">
+                        لا أذونات في الفترة.
+                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    data.perms.map((p) => (
+                      <tr key={p.id}>
+                        {vp("day") ? <td className="px-3 py-2 tabular-nums">{formatReportDateTime(p.date)}</td> : null}
+                        {vp("start") ? <td className="px-3 py-2 tabular-nums">{p.startTime}</td> : null}
+                        {vp("end") ? <td className="px-3 py-2 tabular-nums">{p.endTime}</td> : null}
+                        {vp("reason") ? <td className="px-3 py-2">{p.reason ?? "—"}</td> : null}
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

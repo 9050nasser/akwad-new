@@ -123,9 +123,25 @@ export default async function CompanySettingsPage({
 
           <div className="md:col-span-2">
 
-            <Label htmlFor="name">اسم الشركة</Label>
+            <Label htmlFor="name">اسم الشركة (عربي)</Label>
 
             <input id="name" name="name" className={fieldClass} required defaultValue={company.name} />
+
+          </div>
+
+          <div className="md:col-span-2">
+
+            <Label htmlFor="nameEnglish">اسم الشركة (إنجليزي) — لرأس التقارير والطباعة</Label>
+
+            <input
+              id="nameEnglish"
+              name="nameEnglish"
+              type="text"
+              className={fieldClass}
+              dir="ltr"
+              placeholder="Company name in English"
+              defaultValue={company.nameEnglish ?? ""}
+            />
 
           </div>
 

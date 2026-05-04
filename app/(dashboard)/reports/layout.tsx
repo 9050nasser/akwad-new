@@ -13,7 +13,7 @@ export default async function ReportsLayout({ children }: { children: React.Reac
   return (
     <div className="space-y-4">
       {showBand ? (
-        <div className="flex flex-wrap items-center justify-center gap-4 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 print:justify-between print:border-slate-300">
+        <div className="flex flex-wrap items-center justify-center gap-4 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 print:hidden">
           {company?.logoPath ? (
             <img
               src={company.logoPath}

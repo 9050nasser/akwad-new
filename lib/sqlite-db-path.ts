@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** يحل مسار ملف SQLite من DATABASE_URL (مثل file:./prisma/dev.db). */
+/** يحل مسار ملف SQLite من DATABASE_URL (مثل file:./dev.db — نفس قاعدة Prisma: نسبي من مجلد prisma/). */
 export function resolveSqliteDatabaseAbsolutePath(): string {
-  const raw = (process.env.DATABASE_URL ?? "file:./prisma/dev.db").trim();
+  const raw = (process.env.DATABASE_URL ?? "file:./dev.db").trim();
   const withoutQuery = raw.split("?")[0] ?? raw;
   if (!withoutQuery.toLowerCase().startsWith("file:")) {
     throw new Error("DATABASE_URL يجب أن يشير إلى ملف SQLite (file:...).");
@@ -17,7 +17,10 @@ export function resolveSqliteDatabaseAbsolutePath(): string {
     return path.resolve(p);
   }
   const normalized = p.replace(/^\.\//, "");
-  return path.join(process.cwd(), normalized);
+  if (path.isAbsolute(normalized)) {
+    return normalized;
+  }
+  return path.join(process.cwd(), "prisma", normalized);
 }
 
 export function assertSqliteMagicHeader(buf: Buffer): boolean {

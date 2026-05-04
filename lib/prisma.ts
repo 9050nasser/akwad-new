@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 /** Bump when Prisma schema adds fields/relations that old cached clients reject (e.g. Employee.departmentGroup). */
-const PRISMA_CLIENT_SCHEMA_STAMP = "employee-dept-2026-04";
+const PRISMA_CLIENT_SCHEMA_STAMP = "company-nameEnglish-2026-05";
 
 function newPrismaClient() {
   const client = new PrismaClient({

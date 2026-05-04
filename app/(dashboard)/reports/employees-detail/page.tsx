@@ -1,9 +1,14 @@
 import { PageFrame } from "@/components/page-frame";
+import { ReportColumnsToolbar } from "@/components/report-columns-toolbar";
+import { EmployeesDetailTable } from "@/components/reports/employees-detail-table";
+import { ReportEmployeeFilterFields } from "@/components/report-employee-filter-fields";
 import { Label, PrimaryButton, fieldClass } from "@/components/ui-fields";
 import { monthRangeInputs } from "@/lib/default-range";
 import { firstQuery } from "@/lib/flash";
-import { getEmployeeCheckInSummary, parseRangeFromSearch } from "@/lib/reports";
-import { prisma } from "@/lib/prisma";
+import { EMPLOYEES_DETAIL_COLUMN_GROUPS } from "@/lib/report-column-config";
+import { getReportColumnState } from "@/lib/report-column-state";
+import { buildEmployeeFiltersFromSearchParams, loadReportFilterDropdowns } from "@/lib/report-employee-filters";
+import { getEmployeesAttendanceDetailReport, parseRangeFromSearch } from "@/lib/reports";
 import { requireTenantSession } from "@/lib/tenant";
 
 export default async function EmployeesDetailReportPage({
@@ -18,83 +23,72 @@ export default async function EmployeesDetailReportPage({
   const fromStr = firstQuery(sp.from) ?? defaults.from;
   const toStr = firstQuery(sp.to) ?? defaults.to;
   const branchId = firstQuery(sp.branchId) || undefined;
-  const departmentGroupId = firstQuery(sp.departmentGroupId) || undefined;
+  const employeeFilters = buildEmployeeFiltersFromSearchParams(sp);
   const { from, to } = parseRangeFromSearch(fromStr, toStr);
-  const [rows, branches, departments] = await Promise.all([
-    getEmployeeCheckInSummary({ companyId, from, to, branchId, departmentGroupId }),
-    prisma.branch.findMany({ where: { companyId }, orderBy: { name: "asc" } }),
-    prisma.employeeGroup.findMany({ where: { companyId }, orderBy: { name: "asc" } }),
+  const [{ rows, capped }, dropdowns, colState] = await Promise.all([
+    getEmployeesAttendanceDetailReport({ companyId, from, to, branchId, employeeFilters }),
+    loadReportFilterDropdowns(companyId),
+    getReportColumnState("/reports/employees-detail", "employees-detail", sp),
   ]);
+  const { visibleIds: detailVisible, returnUrl } = colState;
+
+  const totals = rows.reduce(
+    (acc, r) => ({
+      overtimeMinutes: acc.overtimeMinutes + r.overtimeMinutes,
+      lateMinutes: acc.lateMinutes + r.lateMinutes,
+      expectedWorkMinutes: acc.expectedWorkMinutes + r.expectedWorkMinutes,
+      actualWorkMinutes: acc.actualWorkMinutes + r.actualWorkMinutes,
+      differenceMinutes: acc.differenceMinutes + r.differenceMinutes,
+    }),
+    {
+      overtimeMinutes: 0,
+      lateMinutes: 0,
+      expectedWorkMinutes: 0,
+      actualWorkMinutes: 0,
+      differenceMinutes: 0,
+    },
+  );
 
   return (
-    <PageFrame
-      exportFileSlug="employees-detail"
-      title="تقرير الموظفين تفصيلي"
-      subtitle="عدد بصمات الدخول المرحّلة لكل موظف خلال الفترة — يمكن تصفية النتائج حسب الفرع أو القسم (كما عُرّف في بطاقة الموظف)."
-    >
-      <form method="get" className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <div>
-          <Label htmlFor="from">من</Label>
-          <input id="from" name="from" type="date" className={fieldClass} defaultValue={fromStr} />
-        </div>
-        <div>
-          <Label htmlFor="to">إلى</Label>
-          <input id="to" name="to" type="date" className={fieldClass} defaultValue={toStr} />
-        </div>
-        <div>
-          <Label htmlFor="branchId">الفرع</Label>
-          <select id="branchId" name="branchId" className={fieldClass} defaultValue={branchId ?? ""}>
-            <option value="">كل الفروع</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label htmlFor="departmentGroupId">القسم</Label>
-          <select
-            id="departmentGroupId"
-            name="departmentGroupId"
-            className={fieldClass}
-            defaultValue={departmentGroupId ?? ""}
-          >
-            <option value="">كل الأقسام</option>
-            {departments.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-end">
+    <PageFrame exportFileSlug="employees-detail" title="تقرير الحضور والانصراف تفصيلي">
+      <form method="get" className="space-y-4">
+        <ReportEmployeeFilterFields
+          dropdowns={dropdowns}
+          defaults={{ branchId: branchId ?? "", ...employeeFilters }}
+          leadingSlot={
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <Label htmlFor="from">من</Label>
+                <input id="from" name="from" type="date" className={fieldClass} defaultValue={fromStr} />
+              </div>
+              <div>
+                <Label htmlFor="to">إلى</Label>
+                <input id="to" name="to" type="date" className={fieldClass} defaultValue={toStr} />
+              </div>
+            </div>
+          }
+        />
+        <div className="flex flex-wrap items-end gap-3 print:hidden">
           <PrimaryButton type="submit">عرض</PrimaryButton>
         </div>
       </form>
 
-      <div className="mt-8 table-container rounded-xl border border-slate-200">
-        <table className="min-w-full text-right text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3">الموظف</th>
-              <th className="px-4 py-3">الفرع</th>
-              <th className="px-4 py-3">القسم</th>
-              <th className="px-4 py-3">دخول مرحّل</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
-            {rows.map((r) => (
-              <tr key={r.employeeId} className="hover:bg-slate-50/80">
-                <td className="px-4 py-3 font-medium text-slate-900">{r.fullName}</td>
-                <td className="px-4 py-3 text-slate-600">{r.branch}</td>
-                <td className="px-4 py-3 text-slate-600">{r.department}</td>
-                <td className="px-4 py-3 text-slate-600">{r.postedCheckIns}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {capped ? (
+        <p className="mt-4 text-sm text-amber-800">
+          تم اقتصار النتائج على أول {rows.length} صفًا. ضيّق الفترة أو التصفية لعرض الباقي.
+        </p>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap items-center justify-end gap-2 print:hidden">
+        <ReportColumnsToolbar
+          slug="employees-detail"
+          groups={EMPLOYEES_DETAIL_COLUMN_GROUPS}
+          visibleIds={detailVisible}
+          redirectTo={returnUrl}
+        />
       </div>
+
+      <EmployeesDetailTable rows={rows} visibleGroupIds={detailVisible} totals={totals} />
     </PageFrame>
   );
 }

@@ -37,7 +37,7 @@ export default async function ReportsHubPage({
     <PageFrame exportFileSlug="reports-hub" title={m.reportsHub.title} subtitle={m.reportsHub.subtitle}>
       <FlashBanner notice={base.notice} error={base.error ?? payrollMsg} />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 print:hidden">
         {items.map((item) => {
           const Icon = getNavIcon(item.iconKey);
           return (

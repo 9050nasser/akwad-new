@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { GhostButton } from "@/components/ui-fields";
+import { normalizeClonedSubtreeColorsForHtml2Canvas } from "@/lib/pdf-html2canvas-colors";
 import { downloadTextFile, rootTablesToCsv, sanitizeReportFilename } from "@/lib/report-export-csv";
 
 type ReportExportToolbarProps = {
@@ -43,6 +44,9 @@ export function ReportExportToolbar({ fileSlug, reportTitle }: ReportExportToolb
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
+        onclone: (_doc, clonedRoot) => {
+          normalizeClonedSubtreeColorsForHtml2Canvas(root, clonedRoot);
+        },
       });
       const imgData = canvas.toDataURL("image/jpeg", 0.92);
       const w = canvas.width;

@@ -25,6 +25,18 @@ body {
   .no-print {
     display: none !important;
   }
+
+  /* تقرير الحضور والانصراف تفصيلي: منع تداخل النص عند table-auto وعرض الصفحة */
+  .employees-detail-table table {
+    table-layout: auto;
+  }
+
+  .employees-detail-table th,
+  .employees-detail-table td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    vertical-align: top;
+  }
 }
 
 .table-container {

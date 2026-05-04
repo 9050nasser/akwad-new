@@ -1,10 +1,14 @@
 import { PageFrame } from "@/components/page-frame";
+import { ReportColumnsToolbar } from "@/components/report-columns-toolbar";
+import { DailyStatusTable } from "@/components/reports/daily-status-table";
+import { ReportEmployeeFilterFields } from "@/components/report-employee-filter-fields";
 import { Label, PrimaryButton, fieldClass } from "@/components/ui-fields";
-import { firstQuery } from "@/lib/flash";
 import { parseDateOnly } from "@/lib/day-range";
+import { firstQuery } from "@/lib/flash";
+import { DAILY_STATUS_COLUMN_GROUPS } from "@/lib/report-column-config";
+import { getReportColumnState } from "@/lib/report-column-state";
+import { buildEmployeeFiltersFromSearchParams, loadReportFilterDropdowns } from "@/lib/report-employee-filters";
 import { getDailyStatus } from "@/lib/reports";
-import { formatDateTime } from "@/lib/format";
-import { prisma } from "@/lib/prisma";
 import { requireTenantSession } from "@/lib/tenant";
 
 export default async function DailyStatusReportPage({
@@ -17,63 +21,44 @@ export default async function DailyStatusReportPage({
   const sp = (await searchParams) ?? {};
   const dateStr = firstQuery(sp.date) ?? new Date().toISOString().slice(0, 10);
   const branchId = firstQuery(sp.branchId) || undefined;
+  const employeeFilters = buildEmployeeFiltersFromSearchParams(sp);
+
   const date = parseDateOnly(dateStr);
-  const { rows } = await getDailyStatus({ companyId, date, branchId });
-  const branches = await prisma.branch.findMany({ where: { companyId }, orderBy: { name: "asc" } });
+  const [{ rows }, dropdowns, colState] = await Promise.all([
+    getDailyStatus({ companyId, date, branchId, ...employeeFilters }),
+    loadReportFilterDropdowns(companyId),
+    getReportColumnState("/reports/daily-status", "daily-status", sp),
+  ]);
+  const { visibleIds: dailyStatusVisible, returnUrl } = colState;
 
   return (
-    <PageFrame
-      exportFileSlug="daily-status"
-      title="تقرير حالة اليوم"
-      subtitle="حضور اليوم للموظفين النشطين وفق الحركات المرحّلة فقط."
-    >
-      <form method="get" className="grid gap-4 md:grid-cols-4">
-        <div>
-          <Label htmlFor="date">اليوم</Label>
-          <input id="date" name="date" type="date" className={fieldClass} defaultValue={dateStr} />
-        </div>
-        <div>
-          <Label htmlFor="branchId">الفرع</Label>
-          <select id="branchId" name="branchId" className={fieldClass} defaultValue={branchId ?? ""}>
-            <option value="">كل الفروع</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-end">
+    <PageFrame exportFileSlug="daily-status" title="تقرير حالة اليوم">
+      <form method="get" className="space-y-4">
+        <ReportEmployeeFilterFields
+          dropdowns={dropdowns}
+          defaults={{ branchId: branchId ?? "", ...employeeFilters }}
+          leadingSlot={
+            <div>
+              <Label htmlFor="date">اليوم</Label>
+              <input id="date" name="date" type="date" className={fieldClass} defaultValue={dateStr} />
+            </div>
+          }
+        />
+        <div className="flex flex-wrap items-end gap-3 print:hidden">
           <PrimaryButton type="submit">عرض</PrimaryButton>
         </div>
       </form>
 
-      <div className="mt-8 table-container rounded-xl border border-slate-200">
-        <table className="min-w-full text-right text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3">الموظف</th>
-              <th className="px-4 py-3">الفرع</th>
-              <th className="px-4 py-3">دخول مرحّل</th>
-              <th className="px-4 py-3">خروج مرحّل</th>
-              <th className="px-4 py-3">أول حركة</th>
-              <th className="px-4 py-3">آخر حركة</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
-            {rows.map((r) => (
-              <tr key={r.employeeId} className="hover:bg-slate-50/80">
-                <td className="px-4 py-3 font-medium text-slate-900">{r.fullName}</td>
-                <td className="px-4 py-3 text-slate-600">{r.branch}</td>
-                <td className="px-4 py-3 text-slate-600">{r.hasPostedIn ? "نعم" : "لا"}</td>
-                <td className="px-4 py-3 text-slate-600">{r.hasPostedOut ? "نعم" : "لا"}</td>
-                <td className="px-4 py-3 text-slate-600">{r.firstAt ? formatDateTime(r.firstAt) : "—"}</td>
-                <td className="px-4 py-3 text-slate-600">{r.lastAt ? formatDateTime(r.lastAt) : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="mt-4 flex flex-wrap items-center justify-end gap-2 print:hidden">
+        <ReportColumnsToolbar
+          slug="daily-status"
+          groups={DAILY_STATUS_COLUMN_GROUPS}
+          visibleIds={dailyStatusVisible}
+          redirectTo={returnUrl}
+        />
       </div>
+
+      <DailyStatusTable rows={rows} visibleGroupIds={dailyStatusVisible} />
     </PageFrame>
   );
 }

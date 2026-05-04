@@ -10,6 +10,8 @@ datasource db {
 model Company {
   id               String   @id @default(cuid())
   name             String
+  /// الاسم بالإنجليزية لرأس التقارير والطباعة (اختياري).
+  nameEnglish      String?
   /// مفتاح فريد لتسجيل الدخول (مثل default لأدمن المنصة، أو رمز للعميل).
   slug             String   @unique
   /// شركة المنصة الوهمية — لا تحتوي على بيانات تشغيل للعميل.

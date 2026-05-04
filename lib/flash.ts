@@ -40,6 +40,7 @@ const ERR: Record<string, string> = {
   restore_bad_file: "الملف ليس نسخة SQLite صالحة أو فارغ.",
   restore_too_large: "ملف النسخة أكبر من الحد المسموح.",
   restore_failed: "تعذر استعادة الملف. حاول مرة أخرى أو استعد يدوياً من نسخة .pre-restore-* إن وُجدت.",
+  password_mismatch: "كلمة المرور الجديدة وتأكيدها غير متطابقين.",
 };
 
 export function formatFlash(sp: Record<string, string | string[] | undefined>) {
@@ -81,6 +82,9 @@ export function formatFlash(sp: Record<string, string | string[] | undefined>) {
         "تم استبدال قاعدة البيانات من النسخة المرفوعة. إن لاحظت تعارضاً أعد تشغيل السيرفر. تُحفظ نسخة قبل الاستعادة بجانب ملف القاعدة (.pre-restore-…).",
       error: undefined as string | undefined,
     };
+  }
+  if (noticeKey === "user") {
+    return { notice: "تم تحديث بيانات مستخدم الدخول.", error: undefined as string | undefined };
   }
 
   return { notice: undefined as string | undefined, error: undefined as string | undefined };

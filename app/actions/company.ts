@@ -12,11 +12,12 @@ export async function updateCompany(formData: FormData) {
   const { company } = await requireCompanyAndPermission("settings.company", "update");
   const name = String(formData.get("name") ?? "").trim();
   if (!name) redirect("/settings/company?err=required");
-
+  const nameEnglish = String(formData.get("nameEnglish") ?? "").trim() || null;
   await prisma.company.update({
     where: { id: company.id },
     data: {
       name,
+      nameEnglish,
       phone: String(formData.get("phone") ?? "").trim() || null,
       email: String(formData.get("email") ?? "").trim() || null,
       address: String(formData.get("address") ?? "").trim() || null,

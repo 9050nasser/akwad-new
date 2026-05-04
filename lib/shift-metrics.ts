@@ -41,6 +41,54 @@ export function sumShiftDayMetrics(a: ShiftDayMetrics, b: ShiftDayMetrics): Shif
   };
 }
 
+/** يزيل تكرار نفس النوع في نفس الثانية (أو أقرب ثانية) — قبل نافذة الدمج بالدقائق. */
+export function collapseSameSecondDuplicatePunches<T extends { at: Date; kind: string }>(events: T[]): T[] {
+  if (events.length === 0) return [];
+  const sorted = [...events].sort((a, b) => a.at.getTime() - b.at.getTime());
+  const out: T[] = [];
+  for (const e of sorted) {
+    const last = out[out.length - 1];
+    if (
+      last &&
+      last.kind === e.kind &&
+      Math.floor(last.at.getTime() / 1000) === Math.floor(e.at.getTime() / 1000)
+    ) {
+      if (e.kind === "CHECK_OUT") out[out.length - 1] = e;
+      continue;
+    }
+    out.push(e);
+  }
+  return out;
+}
+
+/** نفس الثانية ثم `dedupePunchSequence` — للتقارير وعرض أول/آخر حركة. */
+export function preparePunchesForAttendanceReport<T extends { at: Date; kind: string }>(
+  events: T[],
+  punchDedupeWindowMin: number,
+): T[] {
+  const collapsed = collapseSameSecondDuplicatePunches(events);
+  const w = punchDedupeWindowMin <= 0 ? 1 : punchDedupeWindowMin;
+  return dedupePunchSequence(collapsed, w);
+}
+
+/** أول دخول وآخر خروج بعد تجهيز التسلسل (مرتب زمنيًا). */
+export function firstCheckInLastCheckOutOfDay<T extends { at: Date; kind: string }>(
+  dedupedSorted: T[],
+): { firstIn?: Date; lastOut?: Date } {
+  let firstIn: Date | undefined;
+  let lastOut: Date | undefined;
+  for (const x of dedupedSorted) {
+    if (x.kind === "CHECK_IN" && !firstIn) firstIn = x.at;
+  }
+  for (let i = dedupedSorted.length - 1; i >= 0; i--) {
+    if (dedupedSorted[i].kind === "CHECK_OUT") {
+      lastOut = dedupedSorted[i].at;
+      break;
+    }
+  }
+  return { firstIn, lastOut };
+}
+
 /**
  * يدمج بصمات متكررة لنفس النوع خلال نافذة زمنية (دقائق): أول دخول، آخر خروج.
  * لا يُعدّل السجلات في قاعدة البيانات — للحساب فقط.
@@ -108,6 +156,20 @@ function segmentWindow(
     end.setDate(end.getDate() + 1);
   }
   return { start, end };
+}
+
+/** مجموع الدقائق المجدولة لجميع شرائح يوم واحد (دوام ثابت). */
+export function totalScheduledMinutesForSegments(
+  dayStart: Date,
+  segments: DaySegment[],
+  extendNextDay: boolean,
+): number {
+  let total = 0;
+  for (const seg of segments) {
+    const { start, end } = segmentWindow(dayStart, seg.startTime, seg.endTime, extendNextDay);
+    total += Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+  }
+  return total;
 }
 
 /** يطابق الشفتات بالترتيب مع الأزواج (الشفت ١ مع الزوج ١، …) ويحسب التأخير والتبكير والخروج المبكر والعمل. */

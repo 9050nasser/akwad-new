@@ -46,7 +46,7 @@ export default async function PayrollSlipPage({
   const qBack = new URLSearchParams({ from: fromStr, to: toStr });
 
   return (
-    <PageFrame exportFileSlug="payroll-slip" title="قسيمة راتب" subtitle={employee.fullName}>
+    <PageFrame exportFileSlug="payroll-slip" title={`قسيمة راتب — ${employee.fullName}`}>
       <div className="print:hidden" data-html2canvas-ignore="true">
         <p className="mb-4 flex flex-wrap gap-3 text-sm">
           <Link href={`/reports/payroll?${qBack.toString()}`} className="font-medium text-teal-700 hover:text-teal-900">

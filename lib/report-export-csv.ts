@@ -26,7 +26,8 @@ export function escapeCsvCell(raw: string): string {
 export function tableToCsv(table: HTMLTableElement): string {
   const lines: string[] = [];
   for (const tr of Array.from(table.querySelectorAll("tr"))) {
-    const cells = Array.from(tr.querySelectorAll("th, td")).map((cell) =>
+    if ((tr as HTMLElement).dataset?.csvSkip === "1") continue;
+    const cells = Array.from(tr.querySelectorAll(":scope > th, :scope > td")).map((cell) =>
       escapeCsvCell(cellPlainText(cell as HTMLElement)),
     );
     if (cells.length) lines.push(cells.join(","));
@@ -34,8 +35,13 @@ export function tableToCsv(table: HTMLTableElement): string {
   return lines.join("\r\n");
 }
 
+function isNestedTable(table: HTMLTableElement): boolean {
+  const p = table.parentElement;
+  return Boolean(p?.closest("table"));
+}
+
 export function rootTablesToCsv(root: HTMLElement): string {
-  const tables = root.querySelectorAll("table");
+  const tables = Array.from(root.querySelectorAll("table")).filter((t) => !isNestedTable(t));
   if (tables.length === 0) return "";
   const parts: string[] = [];
   tables.forEach((table, i) => {

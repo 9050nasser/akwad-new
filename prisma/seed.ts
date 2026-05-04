@@ -72,6 +72,7 @@ async function ensureDemoTenant() {
     tenant = await prisma.company.create({
       data: {
         name: "شركة أكواد التجريبية",
+        nameEnglish: "Akwad Demo Company",
         slug: "main",
         isPlatformTenant: false,
         licenseExpiresAt: expires,

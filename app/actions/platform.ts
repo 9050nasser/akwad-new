@@ -163,6 +163,63 @@ export async function updateTenantCompany(formData: FormData) {
   redirect("/platform/companies?notice=1");
 }
 
+export async function updateTenantCompanyUser(formData: FormData) {
+  await requirePlatformSession();
+  const companyId = String(formData.get("companyId") ?? "");
+  const userId = String(formData.get("userId") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const loginEmail = String(formData.get("loginEmail") ?? "").trim().toLowerCase();
+  const newPassword = String(formData.get("newPassword") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+  const back = `/platform/companies/${companyId}/edit`;
+  if (!companyId || !userId || !name || !loginEmail) {
+    redirect(`${back}?err=required`);
+  }
+
+  const company = await prisma.company.findFirst({
+    where: { id: companyId, isPlatformTenant: false },
+  });
+  if (!company) redirect("/platform/companies?err=not_found");
+
+  const user = await prisma.user.findFirst({
+    where: { id: userId, companyId: company.id, isPlatformAdmin: false },
+  });
+  if (!user) redirect(`${back}?err=missing`);
+
+  const wantsPassword = newPassword.length > 0 || confirmPassword.length > 0;
+  if (wantsPassword) {
+    if (newPassword !== confirmPassword) {
+      redirect(`${back}?err=password_mismatch`);
+    }
+    const minLen = effectiveMinPasswordLength(company);
+    if (newPassword.length < minLen) {
+      redirect(`${back}?err=password_short`);
+    }
+  }
+
+  const data: { name: string; email: string; passwordHash?: string } = {
+    name,
+    email: loginEmail,
+  };
+  if (newPassword) {
+    data.passwordHash = await bcrypt.hash(newPassword, 10);
+  }
+
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data,
+    });
+  } catch {
+    redirect(`${back}?err=email`);
+  }
+
+  revalidatePath(back);
+  revalidatePath("/platform/companies");
+  redirect(`${back}?notice=user`);
+}
+
 export async function updatePlatformAdminPassword(formData: FormData) {
   const session = await requirePlatformSession();
   const current = String(formData.get("currentPassword") ?? "");
