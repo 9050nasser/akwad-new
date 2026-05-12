@@ -108,7 +108,46 @@ export async function handleIclockGetRequest(request: NextRequest) {
   if (!iclockPushAuthorized(request)) {
     return textResponse("Invalid comm key\n", 403);
   }
-  return textResponse("OK\n");
+
+  const sn = request.nextUrl.searchParams.get("SN")?.trim();
+  if (!sn) {
+    return textResponse("OK\n");
+  }
+
+  try {
+    // 1. نبحث عن أي أمر معلق (PENDING) للسيريال ده
+    // (بناءً على جدول DeviceCommand اللي ضفناه في ملف schema.prisma)
+    const pendingCommand = await prisma.deviceCommand.findFirst({
+      where: {
+        deviceSn: sn,
+        status: "PENDING",
+      },
+      orderBy: { createdAt: "asc" }, // نجيب أقدم أمر الأول
+    });
+
+    // لو مفيش أوامر، نرجع OK الطبيعية عشان الجهاز يكمل شغله
+    if (!pendingCommand) {
+      return textResponse("OK\n");
+    }
+
+    // 2. لو فيه أمر، نجهزه بصيغة الـ ADMS
+    // الصيغة: C:<ID>:<Command>
+    const responseText = `C:${pendingCommand.id}:${pendingCommand.command}`;
+
+    // 3. نحدث حالة الأمر لـ SENT عشان الجهاز مياخدوش تاني المرة الجاية
+    await prisma.deviceCommand.update({
+      where: { id: pendingCommand.id },
+      data: { status: "SENT" },
+    });
+
+    console.log(`[iclock] Sent command to ${sn}: ${responseText}`);
+    
+    // 4. نرسل الأمر للجهاز
+    return textResponse(`${responseText}\n`);
+  } catch (error) {
+    console.error("[iclock] Error fetching device commands:", error);
+    return textResponse("OK\n"); // بنرجع OK في حالة الخطأ عشان الجهاز ميعلقش
+  }
 }
 
 export async function handleIclockPostDevicecmd(request: NextRequest) {

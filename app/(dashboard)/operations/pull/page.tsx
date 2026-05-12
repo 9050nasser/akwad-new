@@ -3,15 +3,26 @@ import { PageFrame } from "@/components/page-frame";
 import { formatDateTime } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { requireTenantSession } from "@/lib/tenant";
+import PullOldLogsForm from "@/components/pull-old-logs-form";
 
 export default async function PullMovementsPage() {
   const session = await requireTenantSession();
   const companyId = session.companyId;
+  
+  // بنجيب الأجهزة الخاصة بالشركة دي
   const devices = await prisma.fingerprintDevice.findMany({
     where: { branch: { companyId } },
     orderBy: { name: "asc" },
     include: { branch: true },
   });
+
+  // بنجهز قائمة الأجهزة اللي ليها Serial Number بس عشان نبعتها لـ Form السحب اليدوي
+  const validDevicesForPull = devices
+    .filter((d) => d.serialNumber !== null)
+    .map((d) => ({
+      name: d.name,
+      serialNumber: d.serialNumber as string,
+    }));
 
   return (
     <PageFrame
@@ -52,6 +63,11 @@ export default async function PullMovementsPage() {
           </Link>
           .
         </p>
+      </div>
+
+      {/* الفورم الخاصة بسحب الحركات القديمة ضفناها هنا */}
+      <div className="mt-8">
+        <PullOldLogsForm devices={validDevicesForPull} />
       </div>
 
       <div className="mt-8 table-container rounded-xl border border-slate-200">

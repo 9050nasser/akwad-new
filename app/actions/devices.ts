@@ -105,3 +105,22 @@ export async function deleteDevice(formData: FormData) {
   revalidatePath("/dashboard");
   redirect(`${DEVICES_PATH}?notice=1`);
 }
+
+export async function fetchOldAttendanceLogs(deviceSn: string, startDate: string, endDate: string) {
+  try {
+    const commandText = `DATA QUERY ATTLOG StartTime=${startDate} EndTime=${endDate}`;
+
+    await prisma.deviceCommand.create({
+      data: {
+        deviceSn: deviceSn,
+        command: commandText,
+        status: "PENDING",
+      },
+    });
+
+    return { success: true, message: "تمت إضافة أمر سحب الحركات بنجاح. سيقوم الجهاز بإرسالها قريباً." };
+  } catch (error) {
+    console.error("Error queuing command:", error);
+    return { success: false, error: "حدث خطأ أثناء إضافة الأمر" };
+  }
+}

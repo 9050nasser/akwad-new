@@ -441,3 +441,15 @@ model User {
 
   @@unique([companyId, email])
 }
+
+// ضيف الموديل ده في آخر ملف prisma/schema.prisma
+model DeviceCommand {
+  id        Int      @id @default(autoincrement()) // هنستخدمه كـ Command_ID لبروتوكول ZK
+  deviceSn  String   // السيريال نمبر بتاع الجهاز
+  command   String   // نص الأمر (مثلاً: DATA QUERY ATTLOG...)
+  status    String   @default("PENDING") // PENDING, SENT
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([deviceSn, status])
+}
