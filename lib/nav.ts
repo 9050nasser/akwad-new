@@ -76,6 +76,7 @@ const NAV_STRUCTURE: NavSectionDef[] = [
       { key: "late_early_out", href: "/reports/late-early-out", iconKey: "logOut" },
       { key: "total_absence", href: "/reports/total-absence", iconKey: "flag" },
       { key: "total_delays", href: "/reports/total-delays", iconKey: "clock3" },
+      { key: "employee_grouped", href: "/reports/employee-grouped", iconKey: "clock3" },
     ],
   },
   {

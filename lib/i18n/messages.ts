@@ -54,7 +54,8 @@ export type NavLabelKey =
   | "users"
   | "company"
   | "backup"
-  | "general";
+  | "general"
+  | "employee_grouped";
 
 export type UiMessages = {
   nav: Record<NavLabelKey, string>;
@@ -157,6 +158,7 @@ const AR: UiMessages = {
     company: "بيانات الشركة",
     backup: "نسخ احتياطي للبيانات",
     general: "الإعدادات العامة",
+    employee_grouped: "تقرير مجمّع للطباعة",
   },
   brand: { name: "أكواد", proMark: "برو", tagline: "منصة الحضور والانصراف" },
   shell: {
@@ -269,6 +271,7 @@ const EN: UiMessages = {
     company: "Company profile",
     backup: "Database backup",
     general: "General settings",
+    employee_grouped: "Grouped Report (Print)"
   },
   brand: { name: "AQWAD", proMark: "Pro", tagline: "Attendance & time tracking" },
   shell: {

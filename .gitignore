@@ -53,3 +53,4 @@ fingerprint-bridge-state.json
 # ZK Push (iclock) — آخر Stamp لكل سيريال
 fingerprint-iclock-stamps.json
 prisma/dev.db
+dev.db
