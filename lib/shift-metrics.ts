@@ -71,24 +71,23 @@ export function preparePunchesForAttendanceReport<T extends { at: Date; kind: st
   return dedupePunchSequence(collapsed, w);
 }
 
-/** أول دخول وآخر خروج بعد تجهيز التسلسل (مرتب زمنيًا). */
+/** أول بصمة كدخول وآخر بصمة كخروج بعد تجهيز التسلسل (مرتب زمنيًا) بغض النظر عن نوعها. */
 export function firstCheckInLastCheckOutOfDay<T extends { at: Date; kind: string }>(
   dedupedSorted: T[],
 ): { firstIn?: Date; lastOut?: Date } {
   let firstIn: Date | undefined;
   let lastOut: Date | undefined;
-  for (const x of dedupedSorted) {
-    if (x.kind === "CHECK_IN" && !firstIn) firstIn = x.at;
+  
+  if (dedupedSorted.length > 0) {
+    firstIn = dedupedSorted[0].at; // البصمة الأولى هي الدخول
   }
-  for (let i = dedupedSorted.length - 1; i >= 0; i--) {
-    if (dedupedSorted[i].kind === "CHECK_OUT") {
-      lastOut = dedupedSorted[i].at;
-      break;
-    }
+  
+  if (dedupedSorted.length > 1) {
+    lastOut = dedupedSorted[dedupedSorted.length - 1].at; // البصمة الأخيرة هي الخروج
   }
+  
   return { firstIn, lastOut };
 }
-
 /**
  * يدمج بصمات متكررة لنفس النوع خلال نافذة زمنية (دقائق): أول دخول، آخر خروج.
  * لا يُعدّل السجلات في قاعدة البيانات — للحساب فقط.
@@ -115,22 +114,23 @@ export function dedupePunchSequence<T extends { at: Date; kind: string }>(events
   return out;
 }
 
-/** يقرأ تسلسل دخول/خروج ويُكوّن أزواجاً بالترتيب (أول دخول مع أول خروج بعده، إلخ). */
+/** يقرأ تسلسل البصمات ويُكوّن أزواجاً بالترتيب زمنياً بغض النظر عن نوع البصمة (تلقائي الدخول والخروج). */
 export function pairInOutSequence(events: { at: Date; kind: string }[]): { in?: Date; out?: Date }[] {
   const sorted = [...events].sort((a, b) => a.at.getTime() - b.at.getTime());
   const pairs: { in?: Date; out?: Date }[] = [];
   let pendingIn: Date | undefined;
+  
   for (const e of sorted) {
-    if (e.kind === "CHECK_IN") {
-      if (pendingIn) pairs.push({ in: pendingIn });
+    if (pendingIn) {
+      // طالما عندنا بصمة سابقة (دخول)، إذن البصمة الحالية هي (خروج) تلقائياً
+      pairs.push({ in: pendingIn, out: e.at });
+      pendingIn = undefined;
+    } else {
+      // لا توجد بصمة معلقة، إذن هذه البصمة تعتبر (دخول)
       pendingIn = e.at;
-    } else if (e.kind === "CHECK_OUT") {
-      if (pendingIn) {
-        pairs.push({ in: pendingIn, out: e.at });
-        pendingIn = undefined;
-      }
     }
   }
+  
   if (pendingIn) pairs.push({ in: pendingIn });
   return pairs;
 }
