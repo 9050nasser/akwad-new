@@ -167,6 +167,7 @@ export const PAYROLL_VACATIONS_REPORT_COLUMN_GROUPS: ReportColumnGroup[] = [
 
 export const EMPLOYEES_DETAIL_COLUMN_GROUPS: ReportColumnGroup[] = [
   { id: "date", label: "التاريخ" },
+  { id: "dayName", label: "اليوم" },
   { id: "code", label: "كود الموظف" },
   { id: "name", label: "اسم الموظف", required: true },
   { id: "checkIn", label: "وقت الحضور" },
@@ -177,7 +178,6 @@ export const EMPLOYEES_DETAIL_COLUMN_GROUPS: ReportColumnGroup[] = [
   { id: "actualWork", label: "ساعات العمل الحقيقي" },
   { id: "diff", label: "الفرق" },
   { id: "note", label: "ملاحظات" },
-  { id: "dayName", label: "اسم اليوم" },
 ];
 
 export const EMPLOYEE_MOVEMENTS_COLUMN_GROUPS: ReportColumnGroup[] = [
