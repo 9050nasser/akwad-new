@@ -89,6 +89,11 @@ export function EmployeesDetailTable({ rows, visibleGroupIds, totals }: Props) {
                 ملاحظات
               </th>
             ) : null}
+            {v("dayName") ? (
+              <th className="px-3 py-3 whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-2 print:text-[0.65rem] print:font-semibold print:leading-snug">
+                اسم اليوم
+              </th>
+            ) : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 bg-white">
@@ -156,6 +161,11 @@ export function EmployeesDetailTable({ rows, visibleGroupIds, totals }: Props) {
                     {r.dayNote ?? "—"}
                   </td>
                 ) : null}
+                {v("dayName") ? (
+                  <td className="px-3 py-3 align-top text-slate-600 whitespace-nowrap print:whitespace-normal print:px-1.5 print:py-1.5 print:text-[0.65rem] print:leading-snug">
+                    {parseDateOnly(r.dateKey).toLocaleDateString("ar-SA", { weekday: "long" })}
+                  </td>
+                ) : null}
               </tr>
             ))
           )}
@@ -205,6 +215,11 @@ export function EmployeesDetailTable({ rows, visibleGroupIds, totals }: Props) {
                 </td>
               ) : null}
               {v("note") ? (
+                <td className="px-3 py-3 align-top text-slate-500 print:px-1.5 print:py-1.5 print:text-[0.65rem]">
+                  —
+                </td>
+              ) : null}
+              {v("dayName") ? (
                 <td className="px-3 py-3 align-top text-slate-500 print:px-1.5 print:py-1.5 print:text-[0.65rem]">
                   —
                 </td>

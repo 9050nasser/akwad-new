@@ -108,6 +108,7 @@ export function EmployeeGroupedTable({ rows, visibleGroupIds, totals }: Props) {
                   {v("actualWork") && <th className="px-3 py-3 print:px-1.5 print:py-2">عمل حقيقي</th>}
                   {v("diff") && <th className="px-3 py-3 print:px-1.5 print:py-2">الفرق</th>}
                   {v("note") && <th className="px-3 py-3 print:px-1.5 print:py-2">ملاحظات</th>}
+                  {v("dayName") && <th className="px-3 py-3 print:px-1.5 print:py-2">اسم اليوم</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
@@ -124,6 +125,7 @@ export function EmployeeGroupedTable({ rows, visibleGroupIds, totals }: Props) {
                     {v("actualWork") && <td className="px-3 py-3 tabular-nums print:px-1.5">{formatDurationMinutes(r.actualWorkMinutes)}</td>}
                     {v("diff") && <td className="px-3 py-3 tabular-nums print:px-1.5">{formatSignedDurationMinutes(r.differenceMinutes)}</td>}
                     {v("note") && <td className="px-3 py-3 text-xs print:px-1.5">{r.dayNote ?? "—"}</td>}
+                    {v("dayName") && <td className="px-3 py-3 print:px-1.5">{parseDateOnly(r.dateKey).toLocaleDateString("ar-SA", { weekday: "long" })}</td>}
                   </tr>
                 ))}
               </tbody>
@@ -138,6 +140,7 @@ export function EmployeeGroupedTable({ rows, visibleGroupIds, totals }: Props) {
                   {v("actualWork") && <td className="px-3 py-3 print:px-1.5">{formatDurationMinutes(group.totals.actualWorkMinutes)}</td>}
                   {v("diff") && <td className="px-3 py-3 print:px-1.5">{formatSignedDurationMinutes(group.totals.differenceMinutes)}</td>}
                   {v("note") && <td className="px-3 py-3 print:px-1.5">—</td>}
+                  {v("dayName") && <td className="px-3 py-3 print:px-1.5">—</td>}
                 </tr>
               </tfoot>
             </table>

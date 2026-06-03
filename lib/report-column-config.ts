@@ -177,6 +177,7 @@ export const EMPLOYEES_DETAIL_COLUMN_GROUPS: ReportColumnGroup[] = [
   { id: "actualWork", label: "ساعات العمل الحقيقي" },
   { id: "diff", label: "الفرق" },
   { id: "note", label: "ملاحظات" },
+  { id: "dayName", label: "اسم اليوم" },
 ];
 
 export const EMPLOYEE_MOVEMENTS_COLUMN_GROUPS: ReportColumnGroup[] = [
