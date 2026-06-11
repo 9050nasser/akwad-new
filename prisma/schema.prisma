@@ -230,6 +230,8 @@ model Holiday {
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name      String
   date      DateTime
+  /// نهاية العطلة (ضمناً) — null تعني عطلة يوم واحد (نفس date).
+  endDate   DateTime?
   annual    Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

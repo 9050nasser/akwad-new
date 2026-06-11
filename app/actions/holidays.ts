@@ -12,8 +12,18 @@ export async function createHoliday(formData: FormData) {
   if (!name || !dateStr) redirect("/master/holidays?err=required");
   const date = new Date(`${dateStr}T12:00:00`);
   if (Number.isNaN(date.getTime())) redirect("/master/holidays?err=date");
+
+  // نهاية العطلة اختيارية — تركها فارغة يعني عطلة يوم واحد.
+  const endDateStr = String(formData.get("endDate") ?? "").trim();
+  let endDate: Date | null = null;
+  if (endDateStr) {
+    endDate = new Date(`${endDateStr}T12:00:00`);
+    if (Number.isNaN(endDate.getTime())) redirect("/master/holidays?err=date");
+    if (endDate.getTime() < date.getTime()) redirect("/master/holidays?err=range");
+  }
+
   const annual = String(formData.get("annual") ?? "") === "on";
-  await prisma.holiday.create({ data: { name, date, annual, companyId: company.id } });
+  await prisma.holiday.create({ data: { name, date, endDate, annual, companyId: company.id } });
   revalidatePath("/master/holidays");
   redirect("/master/holidays?notice=1");
 }

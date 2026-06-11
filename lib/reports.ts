@@ -21,6 +21,7 @@ import {
   type CompanyOvertimePolicy,
 } from "@/lib/company-attendance";
 import { formatReportDateOnly } from "@/lib/format";
+import { expandHolidaysToDayKeys, holidayOverlapWhere } from "@/lib/holidays";
 import {
   hasReportEmployeeFilters,
   reportEmployeeWhereExtras,
@@ -169,7 +170,7 @@ export async function getDailyStatus(params: DailyStatusParams) {
         })
       : [],
     prisma.holiday.findMany({
-      where: { companyId: params.companyId, date: { gte: start, lte: end } },
+      where: holidayOverlapWhere(params.companyId, start, end),
     }),
   ]);
 
@@ -433,40 +434,30 @@ function computeAttendanceDetailRowForEmployeeDay(input: {
 
   if (list.length === 0) {
     const sched = emp.workSchedule;
-    if (!attendanceDetailExpectedWorkday(sched, weekday, fridayOff)) return null;
-
     const empDay = `${emp.id}:${dateKey}`;
     const isHoliday = holidayDateKeys.has(dateKey);
     const onLeave = onLeaveEmpDay.has(empDay);
 
-    if (isHoliday) {
-      return {
-        ...base(),
-        checkInAt: undefined,
-        checkOutAt: undefined,
-        overtimeMinutes: 0,
-        lateMinutes: 0,
-        expectedWorkMinutes: 0,
-        actualWorkMinutes: 0,
-        differenceMinutes: 0,
-        dayNote: holidayNoteByDateKey.get(dateKey) ?? "عطلة رسمية",
-      };
-    }
-    if (onLeave) {
-      return {
-        ...base(),
-        checkInAt: undefined,
-        checkOutAt: undefined,
-        overtimeMinutes: 0,
-        lateMinutes: 0,
-        expectedWorkMinutes: 0,
-        actualWorkMinutes: 0,
-        differenceMinutes: 0,
-        dayNote: leaveNoteByEmpDay.get(empDay) ?? "إجازة",
-      };
+    // صف بدون أي دقائق محسوبة — لإظهار كل الأيام مهما كان نوعها.
+    const zeroRow = (dayNote: string): AttendanceDetailRow => ({
+      ...base(),
+      checkInAt: undefined,
+      checkOutAt: undefined,
+      overtimeMinutes: 0,
+      lateMinutes: 0,
+      expectedWorkMinutes: 0,
+      actualWorkMinutes: 0,
+      differenceMinutes: 0,
+      dayNote,
+    });
+
+    if (isHoliday) return zeroRow(holidayNoteByDateKey.get(dateKey) ?? "عطلة رسمية");
+    if (onLeave) return zeroRow(leaveNoteByEmpDay.get(empDay) ?? "إجازة");
+    if (!sched) return zeroRow("غياب (بدون جدول دوام)");
+    if (!attendanceDetailExpectedWorkday(sched, weekday, fridayOff)) {
+      return zeroRow("راحة أسبوعية");
     }
 
-    if (!sched) return null;
     const isOpen = Boolean(sched.isOpen);
 
     let lateMinutes = 0;
@@ -729,8 +720,8 @@ export async function getEmployeesAttendanceDetailReport(params: {
         })
       : [],
     prisma.holiday.findMany({
-      where: { companyId: params.companyId, date: { gte: params.from, lte: params.to } },
-      select: { date: true, name: true },
+      where: holidayOverlapWhere(params.companyId, params.from, params.to),
+      select: { date: true, endDate: true, name: true },
     }),
   ]);
 
@@ -752,14 +743,11 @@ export async function getEmployeesAttendanceDetailReport(params: {
       }
     }
   }
-  const holidayDateKeys = new Set(holidays.map((h) => localDayKey(h.date)));
-  const holidayNoteByDateKey = new Map<string, string>();
-  for (const h of holidays) {
-    const dk = localDayKey(h.date);
-    const part = `عطلة رسمية: ${h.name}`;
-    const prev = holidayNoteByDateKey.get(dk);
-    holidayNoteByDateKey.set(dk, prev ? `${prev} — ${part}` : part);
-  }
+  const { dateKeys: holidayDateKeys, noteByDateKey: holidayNoteByDateKey } = expandHolidaysToDayKeys(
+    holidays,
+    params.from,
+    params.to,
+  );
 
   const rows: AttendanceDetailRow[] = [];
   let capped = false;
@@ -883,6 +871,34 @@ export async function getMovements(params: {
   });
 }
 
+export type EmployeeDayStatusKind =
+  | "present"
+  | "absent"
+  | "leave"
+  | "holiday"
+  | "rest"
+  | "none"
+  | "future";
+
+export type EmployeeReportDayRow = {
+  dateKey: string;
+  date: Date;
+  weekdayLabel: string;
+  firstIn?: Date;
+  lastOut?: Date;
+  allPosted: boolean;
+  statusKind: EmployeeDayStatusKind;
+  statusLabel: string;
+};
+
+export type EmployeeReportDaySummary = {
+  presentDays: number;
+  absentDays: number;
+  leaveDays: number;
+  holidayDays: number;
+  restDays: number;
+};
+
 export async function getEmployeeReport(params: {
   companyId: string;
   employeeId: string;
@@ -913,9 +929,11 @@ export async function getEmployeeReport(params: {
 
   const companyRow = await prisma.company.findUnique({
     where: { id: params.companyId },
-    select: { punchDedupeMinutes: true },
+    select: { punchDedupeMinutes: true, fridayIsWorkday: true, lateGraceMinutes: true },
   });
-  const punchWin = normalizeAttendancePolicy(companyRow).punchDedupeMinutes;
+  const employeeAttendancePolicy = normalizeAttendancePolicy(companyRow);
+  const punchWin = employeeAttendancePolicy.punchDedupeMinutes;
+  const fridayOff = !employeeAttendancePolicy.fridayIsWorkday;
 
   const extendsNextDay = employee.workSchedule?.extendShiftNextDay === true;
 
@@ -965,7 +983,98 @@ export async function getEmployeeReport(params: {
     orderBy: { date: "asc" },
   });
 
-  return { employee, events, movementDays, leaves, perms };
+  const holidays = await prisma.holiday.findMany({
+    where: holidayOverlapWhere(params.companyId, params.from, params.to),
+    select: { date: true, endDate: true, name: true },
+  });
+  const { dateKeys: holidayKeys, noteByDateKey: holidayNotes } = expandHolidaysToDayKeys(
+    holidays,
+    params.from,
+    params.to,
+  );
+
+  const movementByKey = new Map(movementDays.map((m) => [m.dateKey, m]));
+  const sched = employee.workSchedule;
+  const isOpenSchedule = Boolean(sched?.isOpen);
+  const weekdayFmt = new Intl.DateTimeFormat("ar-u-nu-latn", { weekday: "long" });
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  const leaveNoteForDay = (dayStart: Date): string | null => {
+    const dayEnd = new Date(dayStart);
+    dayEnd.setHours(23, 59, 59, 999);
+    const dayLeaves = leaves.filter(
+      (l) => l.startAt.getTime() <= dayEnd.getTime() && l.endAt.getTime() >= dayStart.getTime(),
+    );
+    if (dayLeaves.length === 0) return null;
+    return `إجازة: ${dayLeaves.map((l) => l.leaveType.name).join("، ")}`;
+  };
+
+  /** هل اليوم يوم عمل مجدول؟ (دوام مفتوح = كل الأيام؛ ثابت = حسب أيام الجدول مع سياسة الجمعة) */
+  const isScheduledWorkday = (weekday: number): boolean => {
+    if (!sched) return false;
+    if (isOpenSchedule) return (sched.expectedDailyMinutes ?? 0) > 0;
+    return (sched.days ?? []).some((d) => !(fridayOff && d.weekday === 5) && d.weekday === weekday);
+  };
+
+  const daySummary: EmployeeReportDaySummary = {
+    presentDays: 0,
+    absentDays: 0,
+    leaveDays: 0,
+    holidayDays: 0,
+    restDays: 0,
+  };
+
+  const dayRows: EmployeeReportDayRow[] = eachCalendarDay(params.from, params.to).map((day) => {
+    const dayStart = localCalendarDayStart(day);
+    const dateKey = localDayKey(dayStart);
+    const weekday = dayStart.getDay();
+    const weekdayLabel = weekdayFmt.format(dayStart);
+    const movement = movementByKey.get(dateKey);
+    const isHoliday = holidayKeys.has(dateKey);
+    const holidayNote = holidayNotes.get(dateKey);
+
+    const base = {
+      dateKey,
+      date: dayStart,
+      weekdayLabel,
+      firstIn: movement?.firstIn,
+      lastOut: movement?.lastOut,
+      allPosted: movement?.allPosted ?? false,
+    };
+
+    if (movement) {
+      daySummary.presentDays += 1;
+      return {
+        ...base,
+        statusKind: "present" as const,
+        statusLabel: isHoliday ? "حضور (يوم عطلة رسمية)" : "حضور",
+      };
+    }
+    if (isHoliday) {
+      daySummary.holidayDays += 1;
+      return { ...base, statusKind: "holiday" as const, statusLabel: holidayNote ?? "عطلة رسمية" };
+    }
+    const leaveNote = leaveNoteForDay(dayStart);
+    if (leaveNote) {
+      daySummary.leaveDays += 1;
+      return { ...base, statusKind: "leave" as const, statusLabel: leaveNote };
+    }
+    if (!sched) {
+      return { ...base, statusKind: "none" as const, statusLabel: "بدون جدول دوام" };
+    }
+    if (!isScheduledWorkday(weekday)) {
+      daySummary.restDays += 1;
+      return { ...base, statusKind: "rest" as const, statusLabel: "راحة أسبوعية" };
+    }
+    if (dayStart.getTime() > todayEnd.getTime()) {
+      return { ...base, statusKind: "future" as const, statusLabel: "—" };
+    }
+    daySummary.absentDays += 1;
+    return { ...base, statusKind: "absent" as const, statusLabel: "غياب" };
+  });
+
+  return { employee, events, movementDays, dayRows, daySummary, leaves, perms };
 }
 
 function absenceDayPresenceKey(employeeId: string, d: Date): string {
@@ -1847,8 +1956,8 @@ export async function getEmployeesAttendanceSummaryRollup(params: {
         })
       : [],
     prisma.holiday.findMany({
-      where: { companyId: params.companyId, date: { gte: params.from, lte: params.to } },
-      select: { date: true, name: true },
+      where: holidayOverlapWhere(params.companyId, params.from, params.to),
+      select: { date: true, endDate: true, name: true },
     }),
   ]);
 
@@ -1870,14 +1979,11 @@ export async function getEmployeesAttendanceSummaryRollup(params: {
       }
     }
   }
-  const holidayDateKeys = new Set(holidays.map((h) => localDayKey(h.date)));
-  const holidayNoteByDateKey = new Map<string, string>();
-  for (const h of holidays) {
-    const dk = localDayKey(h.date);
-    const part = `عطلة رسمية: ${h.name}`;
-    const prev = holidayNoteByDateKey.get(dk);
-    holidayNoteByDateKey.set(dk, prev ? `${prev} — ${part}` : part);
-  }
+  const { dateKeys: holidayDateKeys, noteByDateKey: holidayNoteByDateKey } = expandHolidaysToDayKeys(
+    holidays,
+    params.from,
+    params.to,
+  );
 
   type Acc = {
     scheduleMinutesTotal: number;
@@ -1927,7 +2033,7 @@ export async function getEmployeesAttendanceSummaryRollup(params: {
       a.lateMinutesTotal += row.lateMinutes;
       a.overtimeMinutesTotal += row.overtimeMinutes;
       a.actualWorkMinutesTotal += row.actualWorkMinutes;
-      if (row.dayNote === "غياب") a.absenceDays += 1;
+      if (row.dayNote?.startsWith("غياب")) a.absenceDays += 1;
       else if (row.dayNote?.startsWith("إجازة")) a.leaveDays += 1;
     }
   }

@@ -11,9 +11,43 @@ import {
   EMPLOYEE_PERMISSIONS_COLUMN_GROUPS,
 } from "@/lib/report-column-config";
 import { getReportColumnState } from "@/lib/report-column-state";
-import { getEmployeeReport, parseRangeFromSearch } from "@/lib/reports";
+import { getEmployeeReport, parseRangeFromSearch, type EmployeeDayStatusKind } from "@/lib/reports";
 import { prisma } from "@/lib/prisma";
 import { requireTenantSession } from "@/lib/tenant";
+
+/** خلفية خفيفة لصف اليوم حسب الحالة. */
+function dayRowClass(kind: EmployeeDayStatusKind): string {
+  switch (kind) {
+    case "absent":
+      return "bg-rose-50/40";
+    case "leave":
+      return "bg-amber-50/40";
+    case "holiday":
+      return "bg-sky-50/40";
+    case "rest":
+      return "bg-slate-50/60";
+    default:
+      return "";
+  }
+}
+
+/** لون نص خلية الحالة. */
+function dayStatusClass(kind: EmployeeDayStatusKind): string {
+  switch (kind) {
+    case "present":
+      return "text-emerald-700";
+    case "absent":
+      return "text-rose-700";
+    case "leave":
+      return "text-amber-700";
+    case "holiday":
+      return "text-sky-700";
+    case "rest":
+      return "text-slate-500";
+    default:
+      return "text-slate-500";
+  }
+}
 
 export default async function SingleEmployeeReportPage({
   searchParams,
@@ -105,30 +139,52 @@ export default async function SingleEmployeeReportPage({
                 />
               </div>
             </div>
+            <div className="mb-3 flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
+                حضور: {data.daySummary.presentDays}
+              </span>
+              <span className="rounded-full bg-rose-50 px-3 py-1 font-medium text-rose-700">
+                غياب: {data.daySummary.absentDays}
+              </span>
+              <span className="rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700">
+                إجازة: {data.daySummary.leaveDays}
+              </span>
+              <span className="rounded-full bg-sky-50 px-3 py-1 font-medium text-sky-700">
+                عطلة رسمية: {data.daySummary.holidayDays}
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
+                راحة أسبوعية: {data.daySummary.restDays}
+              </span>
+            </div>
             <div className="table-container rounded-xl border border-slate-200">
               <table className="min-w-full text-right text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
                     {vm("date") ? <th className="px-3 py-2">التاريخ</th> : null}
+                    {vm("weekday") ? <th className="px-3 py-2">اليوم</th> : null}
                     {vm("firstIn") ? <th className="px-3 py-2">أول دخول</th> : null}
                     {vm("lastOut") ? <th className="px-3 py-2">آخر خروج</th> : null}
+                    {vm("status") ? <th className="px-3 py-2">الحالة</th> : null}
                     {vm("posted") ? <th className="px-3 py-2">مرحّل</th> : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {data.movementDays.length === 0 ? (
+                  {data.dayRows.length === 0 ? (
                     <tr>
                       <td colSpan={emptyM} className="px-3 py-6 text-center text-slate-500">
-                        لا حركات في الفترة.
+                        لا أيام في الفترة.
                       </td>
                     </tr>
                   ) : (
-                    data.movementDays.map((d) => (
-                      <tr key={d.dateKey}>
+                    data.dayRows.map((d) => (
+                      <tr key={d.dateKey} className={dayRowClass(d.statusKind)}>
                         {vm("date") ? (
                           <td className="px-3 py-2 tabular-nums text-slate-800">
                             {formatReportDateOnly(parseDateOnly(d.dateKey))}
                           </td>
+                        ) : null}
+                        {vm("weekday") ? (
+                          <td className="px-3 py-2 text-slate-700">{d.weekdayLabel}</td>
                         ) : null}
                         {vm("firstIn") ? (
                           <td className="px-3 py-2 tabular-nums text-slate-800">
@@ -140,7 +196,16 @@ export default async function SingleEmployeeReportPage({
                             {d.lastOut ? formatReportTimeOnly(d.lastOut) : "—"}
                           </td>
                         ) : null}
-                        {vm("posted") ? <td className="px-3 py-2">{d.allPosted ? "نعم" : "لا"}</td> : null}
+                        {vm("status") ? (
+                          <td className={`px-3 py-2 font-medium ${dayStatusClass(d.statusKind)}`}>
+                            {d.statusLabel}
+                          </td>
+                        ) : null}
+                        {vm("posted") ? (
+                          <td className="px-3 py-2">
+                            {d.statusKind === "present" ? (d.allPosted ? "نعم" : "لا") : "—"}
+                          </td>
+                        ) : null}
                       </tr>
                     ))
                   )}

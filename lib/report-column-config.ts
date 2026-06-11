@@ -182,8 +182,10 @@ export const EMPLOYEES_DETAIL_COLUMN_GROUPS: ReportColumnGroup[] = [
 
 export const EMPLOYEE_MOVEMENTS_COLUMN_GROUPS: ReportColumnGroup[] = [
   { id: "date", label: "التاريخ", required: true },
+  { id: "weekday", label: "اليوم" },
   { id: "firstIn", label: "أول دخول" },
   { id: "lastOut", label: "آخر خروج" },
+  { id: "status", label: "الحالة" },
   { id: "posted", label: "مرحّل" },
 ];
 

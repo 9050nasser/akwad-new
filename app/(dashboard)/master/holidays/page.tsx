@@ -4,6 +4,7 @@ import { DangerButton, Label, PrimaryButton, fieldClass } from "@/components/ui-
 import { PageFrame } from "@/components/page-frame";
 import { createHoliday, deleteHoliday } from "@/app/actions/holidays";
 import { formatDateOnly } from "@/lib/format";
+import { holidayDayCount } from "@/lib/holidays";
 import { formatFlash } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
 import { requireTenantSession } from "@/lib/tenant";
@@ -28,8 +29,12 @@ export default async function HolidaysPage({
           <input id="name" name="name" className={fieldClass} required />
         </div>
         <div>
-          <Label htmlFor="date">التاريخ</Label>
+          <Label htmlFor="date">من تاريخ</Label>
           <input id="date" name="date" type="date" className={fieldClass} required />
+        </div>
+        <div>
+          <Label htmlFor="endDate">إلى تاريخ (اختياري)</Label>
+          <input id="endDate" name="endDate" type="date" className={fieldClass} />
         </div>
         <div className="flex items-end gap-2">
           <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -47,7 +52,9 @@ export default async function HolidaysPage({
             <tr>
               <th className="w-16 px-4 py-3 hidden sm:table-cell">المسلسل</th>
               <th className="px-4 py-3">الاسم</th>
-              <th className="px-4 py-3 hidden sm:table-cell">التاريخ</th>
+              <th className="px-4 py-3 hidden sm:table-cell">من</th>
+              <th className="px-4 py-3 hidden sm:table-cell">إلى</th>
+              <th className="px-4 py-3 hidden sm:table-cell">عدد الأيام</th>
               <th className="px-4 py-3 hidden sm:table-cell">سنوية</th>
               <th className="px-4 py-3 w-32">إجراءات</th>
             </tr>
@@ -58,6 +65,10 @@ export default async function HolidaysPage({
                 <td className="px-4 py-3 text-slate-500 tabular-nums hidden sm:table-cell">{i + 1}</td>
                 <td className="px-4 py-3 font-medium text-slate-900">{r.name}</td>
                 <td className="px-4 py-3 text-slate-600 hidden sm:table-cell">{formatDateOnly(r.date)}</td>
+                <td className="px-4 py-3 text-slate-600 hidden sm:table-cell">
+                  {formatDateOnly(r.endDate ?? r.date)}
+                </td>
+                <td className="px-4 py-3 text-slate-600 tabular-nums hidden sm:table-cell">{holidayDayCount(r)}</td>
                 <td className="px-4 py-3 text-slate-600 hidden sm:table-cell">{r.annual ? "نعم" : "لا"}</td>
                 <td className="px-4 py-3">
                   <ConfirmServerActionForm action={deleteHoliday} confirmMessage="حذف هذه العطلة؟" className="inline">
