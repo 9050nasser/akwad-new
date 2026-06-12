@@ -240,5 +240,10 @@ export function localCalendarDayStart(d: Date): Date {
 }
 
 export function localDayKey(d: Date): string {
-  return localCalendarDayStart(d).toISOString().slice(0, 10);
+  // مهم: لا نستخدم toISOString لأنها تحوّل لـ UTC فيرجع اليوم السابق في المناطق الزمنية الموجبة (مثل +03).
+  const x = localCalendarDayStart(d);
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }

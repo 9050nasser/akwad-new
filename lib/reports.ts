@@ -1838,7 +1838,7 @@ export async function getIncompleteRows(params: {
       rows.push({
         employee: emp.fullName,
         branch: emp.branch.name,
-        day: day.toISOString().slice(0, 10),
+        day: localDayKey(day),
         ins,
         outs,
         issueAr,

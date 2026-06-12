@@ -9,6 +9,7 @@ import { DAILY_STATUS_COLUMN_GROUPS } from "@/lib/report-column-config";
 import { getReportColumnState } from "@/lib/report-column-state";
 import { buildEmployeeFiltersFromSearchParams, loadReportFilterDropdowns } from "@/lib/report-employee-filters";
 import { getDailyStatus } from "@/lib/reports";
+import { localDayKey } from "@/lib/shift-metrics";
 import { requireTenantSession } from "@/lib/tenant";
 
 export default async function DailyStatusReportPage({
@@ -19,7 +20,7 @@ export default async function DailyStatusReportPage({
   const session = await requireTenantSession();
   const companyId = session.companyId;
   const sp = (await searchParams) ?? {};
-  const dateStr = firstQuery(sp.date) ?? new Date().toISOString().slice(0, 10);
+  const dateStr = firstQuery(sp.date) ?? localDayKey(new Date());
   const branchId = firstQuery(sp.branchId) || undefined;
   const employeeFilters = buildEmployeeFiltersFromSearchParams(sp);
 

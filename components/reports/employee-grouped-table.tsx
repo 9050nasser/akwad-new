@@ -1,6 +1,3 @@
-"use client";
-
-import { useMemo } from "react";
 import { parseDateOnly } from "@/lib/day-range";
 import {
   formatDurationMinutes,
@@ -29,45 +26,43 @@ export function EmployeeGroupedTable({ rows, visibleGroupIds, totals }: Props) {
   const leadIds = ["date", "dayName", "code", "name"] as const;
   const leadCount = Math.max(1, leadIds.filter((id) => v(id)).length);
 
-  const groupedByEmployee = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        employeeId: string;
-        fullName: string;
-        employeeCode: string;
-        rows: AttendanceDetailRow[];
-        totals: Props["totals"];
-      }
-    >();
-
-    for (const r of rows) {
-      if (!map.has(r.employeeId)) {
-        map.set(r.employeeId, {
-          employeeId: r.employeeId,
-          fullName: r.fullName,
-          employeeCode: r.employeeCode,
-          rows: [],
-          totals: {
-            overtimeMinutes: 0,
-            lateMinutes: 0,
-            expectedWorkMinutes: 0,
-            actualWorkMinutes: 0,
-            differenceMinutes: 0,
-          },
-        });
-      }
-      const g = map.get(r.employeeId)!;
-      g.rows.push(r);
-      g.totals.overtimeMinutes += r.overtimeMinutes;
-      g.totals.lateMinutes += r.lateMinutes;
-      g.totals.expectedWorkMinutes += r.expectedWorkMinutes;
-      g.totals.actualWorkMinutes += r.actualWorkMinutes;
-      g.totals.differenceMinutes += r.differenceMinutes;
+  const map = new Map<
+    string,
+    {
+      employeeId: string;
+      fullName: string;
+      employeeCode: string;
+      rows: AttendanceDetailRow[];
+      totals: Props["totals"];
     }
+  >();
 
-    return Array.from(map.values());
-  }, [rows]);
+  for (const r of rows) {
+    if (!map.has(r.employeeId)) {
+      map.set(r.employeeId, {
+        employeeId: r.employeeId,
+        fullName: r.fullName,
+        employeeCode: r.employeeCode,
+        rows: [],
+        totals: {
+          overtimeMinutes: 0,
+          lateMinutes: 0,
+          expectedWorkMinutes: 0,
+          actualWorkMinutes: 0,
+          differenceMinutes: 0,
+        },
+      });
+    }
+    const g = map.get(r.employeeId)!;
+    g.rows.push(r);
+    g.totals.overtimeMinutes += r.overtimeMinutes;
+    g.totals.lateMinutes += r.lateMinutes;
+    g.totals.expectedWorkMinutes += r.expectedWorkMinutes;
+    g.totals.actualWorkMinutes += r.actualWorkMinutes;
+    g.totals.differenceMinutes += r.differenceMinutes;
+  }
+
+  const groupedByEmployee = Array.from(map.values());
 
   if (rows.length === 0) {
     return (
@@ -111,7 +106,7 @@ export function EmployeeGroupedTable({ rows, visibleGroupIds, totals }: Props) {
                   {v("note") && <th className="px-3 py-3 print:px-1.5 print:py-2">ملاحظات</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody className="divide-y divide-slate-100 bg-white text-slate-800">
                 {group.rows.map((r) => (
                   <tr key={`${r.dateKey}-${r.employeeId}`} className="hover:bg-slate-50/80 print:break-inside-avoid">
                     {v("date") && <td className="px-3 py-3 print:px-1.5">{formatReportDateOnly(parseDateOnly(r.dateKey))}</td>}
