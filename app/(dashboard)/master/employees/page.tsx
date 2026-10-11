@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import Link from "next/link";
 import { ConfirmServerActionForm } from "@/components/confirm-server-action-form";
 import { FlashBanner } from "@/components/flash-banner";
@@ -9,6 +10,19 @@ import { firstQuery, formatFlash } from "@/lib/flash";
 import { prisma } from "@/lib/prisma";
 import { requireTenantSession } from "@/lib/tenant";
 
+function employeeListSearchWhere(q: string): Prisma.EmployeeWhereInput {
+  const term = q.trim();
+  if (!term) return {};
+  const or: Prisma.EmployeeWhereInput[] = [
+    { fullName: { contains: term } },
+    { employeeCode: { contains: term } },
+  ];
+  if (/^\d+$/.test(term)) {
+    or.push({ deviceUserId: parseInt(term, 10) });
+  }
+  return { OR: or };
+}
+
 export default async function EmployeesPage({
   searchParams,
 }: {
@@ -19,6 +33,7 @@ export default async function EmployeesPage({
   const sp = (await searchParams) ?? {};
   const flash = formatFlash(sp);
   const editId = firstQuery(sp.edit);
+  const q = firstQuery(sp.q)?.trim() ?? "";
 
   const [branches, jobs, projects, nationalities, duties, schedules, departments, employees, company] =
     await Promise.all([
@@ -30,7 +45,7 @@ export default async function EmployeesPage({
       prisma.workSchedule.findMany({ where: { companyId }, orderBy: { name: "asc" } }),
       prisma.employeeGroup.findMany({ where: { companyId }, orderBy: { name: "asc" } }),
       prisma.employee.findMany({
-        where: { branch: { companyId } },
+        where: { branch: { companyId }, ...employeeListSearchWhere(q) },
         orderBy: { fullName: "asc" },
         include: { branch: true, jobTitle: true, workSchedule: true, departmentGroup: true },
       }),
@@ -67,7 +82,10 @@ export default async function EmployeesPage({
           <input type="hidden" name="id" value={editing.id} />
           <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-slate-900">تعديل: {editing.fullName}</h2>
-            <Link href="/master/employees" className="text-sm text-teal-800 hover:underline">
+            <Link
+              href={q ? `/master/employees?q=${encodeURIComponent(q)}` : "/master/employees"}
+              className="text-sm text-teal-800 hover:underline"
+            >
               إلغاء التعديل
             </Link>
           </div>
@@ -303,12 +321,41 @@ export default async function EmployeesPage({
         </form>
       )}
 
-      <div className="mt-10 table-container rounded-xl border border-slate-200 table-container">
+      <form method="get" className="mt-10 flex flex-wrap items-end gap-3">
+        <div className="min-w-[220px] flex-1 max-w-lg">
+          <Label htmlFor="q">بحث عن موظف</Label>
+          <input
+            id="q"
+            name="q"
+            type="search"
+            className={fieldClass}
+            placeholder="الاسم، الكود الوظيفي، أو رقم المستخدم على ZK"
+            defaultValue={q}
+          />
+        </div>
+        <PrimaryButton type="submit">بحث</PrimaryButton>
+        {q ? (
+          <Link
+            href="/master/employees"
+            className="inline-flex items-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            مسح البحث
+          </Link>
+        ) : null}
+      </form>
+      {q ? (
+        <p className="mt-2 text-sm text-slate-600">
+          {employees.length === 0 ? "لا توجد نتائج مطابقة." : `${employees.length} نتيجة`}
+        </p>
+      ) : null}
+
+      <div className="mt-4 table-container rounded-xl border border-slate-200 table-container">
         <table className="min-w-full text-right text-sm">
           <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="w-16 px-4 py-3">المسلسل</th>
               <th className="px-4 py-3">الاسم</th>
+              <th className="px-4 py-3 hidden sm:table-cell">الكود</th>
               <th className="px-4 py-3">الفرع</th>
               <th className="px-4 py-3 hidden sm:table-cell">ZK</th>
               <th className="px-4 py-3">الوظيفة</th>
@@ -318,10 +365,20 @@ export default async function EmployeesPage({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
+            {employees.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                  {q ? "لا يوجد موظف يطابق البحث." : "لا يوجد موظفون."}
+                </td>
+              </tr>
+            ) : null}
             {employees.map((e, i) => (
               <tr key={e.id} className="hover:bg-slate-50/80">
                 <td className="px-4 py-3 text-slate-500 tabular-nums">{i + 1}</td>
                 <td className="px-4 py-3 font-medium text-slate-900">{e.fullName}</td>
+                <td className="px-4 py-3 font-mono text-xs text-slate-600 hidden sm:table-cell">
+                  {e.employeeCode?.trim() || "—"}
+                </td>
                 <td className="px-4 py-3 text-slate-600">{e.branch.name}</td>
                 <td className="px-4 py-3 text-slate-600 hidden sm:table-cell">{e.deviceUserId ?? "—"}</td>
                 <td className="px-4 py-3 text-slate-600">{e.jobTitle?.name ?? "—"}</td>
@@ -330,7 +387,7 @@ export default async function EmployeesPage({
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-2">
                     <Link
-                      href={`/master/employees?edit=${e.id}`}
+                      href={q ? `/master/employees?edit=${e.id}&q=${encodeURIComponent(q)}` : `/master/employees?edit=${e.id}`}
                       className="inline-flex items-center rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-800 hover:bg-slate-50"
                     >
                       تعديل

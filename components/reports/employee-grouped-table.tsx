@@ -123,9 +123,8 @@ export function EmployeeGroupedTable({ rows, visibleGroupIds, totals }: Props) {
                     {v("note") && <td className="px-3 py-3 text-xs print:px-1.5">{r.dayNote ?? "—"}</td>}
                   </tr>
                 ))}
-              </tbody>
-              <tfoot className="border-t-2 border-slate-200 bg-slate-50/90 font-semibold text-slate-800 print:break-inside-avoid print:border-t-[1px]">
-                <tr>
+                {/* Keep totals in tbody (not tfoot) so browsers don't repeat them on every printed page */}
+                <tr className="border-t-2 border-slate-200 bg-slate-50/90 font-semibold text-slate-800 print:break-inside-avoid print:border-t-[1px]">
                   <td colSpan={leadCount} className="px-3 py-3 print:px-1.5">إجمالي الموظف</td>
                   {v("checkIn") && <td className="px-3 py-3 print:px-1.5">—</td>}
                   {v("checkOut") && <td className="px-3 py-3 print:px-1.5">—</td>}
@@ -136,7 +135,7 @@ export function EmployeeGroupedTable({ rows, visibleGroupIds, totals }: Props) {
                   {v("diff") && <td className="px-3 py-3 print:px-1.5">{formatSignedDurationMinutes(group.totals.differenceMinutes)}</td>}
                   {v("note") && <td className="px-3 py-3 print:px-1.5">—</td>}
                 </tr>
-              </tfoot>
+              </tbody>
             </table>
           </div>
         </div>
