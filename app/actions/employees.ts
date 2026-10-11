@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -62,6 +63,32 @@ function parseBaseSalaryMonthly(raw: string): number | null {
   return Math.round(n * 100) / 100;
 }
 
+async function assertUniqueEmployeeCodeInBranch(
+  branchId: string,
+  employeeCode: string | null,
+  excludeEmployeeId?: string,
+) {
+  if (!employeeCode) return;
+  const dup = await prisma.employee.findFirst({
+    where: {
+      branchId,
+      employeeCode,
+      ...(excludeEmployeeId ? { NOT: { id: excludeEmployeeId } } : {}),
+    },
+    select: { id: true, fullName: true },
+  });
+  if (dup) redirect("/master/employees?err=employee_code_dup");
+}
+
+function redirectIfDuplicateEmployeeCode(err: unknown) {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+    const target = err.meta?.target;
+    if (Array.isArray(target) && target.includes("employeeCode")) {
+      redirect("/master/employees?err=employee_code_dup");
+    }
+  }
+}
+
 export async function createEmployee(formData: FormData) {
   const { company } = await requireCompanyAndPermission("master.employees", "create");
   const activeCount = await prisma.employee.count({
@@ -103,28 +130,35 @@ export async function createEmployee(formData: FormData) {
 
   const payrollOn = company.enablePayroll;
 
-  await prisma.employee.create({
-    data: {
-      fullName,
-      employeeCode,
-      deviceUserId: deviceUserId ?? undefined,
-      branchId,
-      jobTitleId: jobTitleId ?? undefined,
-      projectId: projectId ?? undefined,
-      nationalityId: nationalityId ?? undefined,
-      workDutyId: workDutyId ?? undefined,
-      workScheduleId: workScheduleId ?? undefined,
-      departmentGroupId: departmentGroupId ?? undefined,
-      ...(payrollOn
-        ? {
-            baseSalaryMonthly: baseSalaryMonthly ?? undefined,
-            allowanceHousingMonthly: allowanceHousingMonthly ?? undefined,
-            allowanceTransportMonthly: allowanceTransportMonthly ?? undefined,
-          }
-        : {}),
-      active: true,
-    },
-  });
+  await assertUniqueEmployeeCodeInBranch(branchId, employeeCode);
+
+  try {
+    await prisma.employee.create({
+      data: {
+        fullName,
+        employeeCode,
+        deviceUserId: deviceUserId ?? undefined,
+        branchId,
+        jobTitleId: jobTitleId ?? undefined,
+        projectId: projectId ?? undefined,
+        nationalityId: nationalityId ?? undefined,
+        workDutyId: workDutyId ?? undefined,
+        workScheduleId: workScheduleId ?? undefined,
+        departmentGroupId: departmentGroupId ?? undefined,
+        ...(payrollOn
+          ? {
+              baseSalaryMonthly: baseSalaryMonthly ?? undefined,
+              allowanceHousingMonthly: allowanceHousingMonthly ?? undefined,
+              allowanceTransportMonthly: allowanceTransportMonthly ?? undefined,
+            }
+          : {}),
+        active: true,
+      },
+    });
+  } catch (e) {
+    redirectIfDuplicateEmployeeCode(e);
+    throw e;
+  }
 
   revalidatePath("/master/employees");
   revalidatePath("/dashboard");
@@ -173,29 +207,36 @@ export async function updateEmployee(formData: FormData) {
     workDutyId,
   });
 
-  await prisma.employee.update({
-    where: { id },
-    data: {
-      fullName,
-      employeeCode,
-      deviceUserId: deviceUserId ?? null,
-      branchId,
-      jobTitleId: jobTitleId ?? null,
-      projectId: projectId ?? null,
-      nationalityId: nationalityId ?? null,
-      workDutyId: workDutyId ?? null,
-      workScheduleId: workScheduleId ?? null,
-      departmentGroupId: departmentGroupId ?? null,
-      ...(includePayroll && company.enablePayroll
-        ? {
-            baseSalaryMonthly,
-            allowanceHousingMonthly,
-            allowanceTransportMonthly,
-          }
-        : {}),
-      active,
-    },
-  });
+  await assertUniqueEmployeeCodeInBranch(branchId, employeeCode, id);
+
+  try {
+    await prisma.employee.update({
+      where: { id },
+      data: {
+        fullName,
+        employeeCode,
+        deviceUserId: deviceUserId ?? null,
+        branchId,
+        jobTitleId: jobTitleId ?? null,
+        projectId: projectId ?? null,
+        nationalityId: nationalityId ?? null,
+        workDutyId: workDutyId ?? null,
+        workScheduleId: workScheduleId ?? null,
+        departmentGroupId: departmentGroupId ?? null,
+        ...(includePayroll && company.enablePayroll
+          ? {
+              baseSalaryMonthly,
+              allowanceHousingMonthly,
+              allowanceTransportMonthly,
+            }
+          : {}),
+        active,
+      },
+    });
+  } catch (e) {
+    redirectIfDuplicateEmployeeCode(e);
+    throw e;
+  }
 
   revalidatePath("/master/employees");
   revalidatePath("/dashboard");
