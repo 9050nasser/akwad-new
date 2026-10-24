@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { normalizeExtendedDayStartHour } from "@/lib/attendance-logical-day";
 import { parseTimeToMinutes } from "@/lib/schedule-time";
 import { prisma } from "@/lib/prisma";
 import { requireCompanyAndPermission } from "@/lib/rbac/guards";
@@ -15,6 +16,13 @@ function parseGraceField(formData: FormData, key: string) {
   const n = parseInt(String(formData.get(key) ?? "0"), 10);
   if (!Number.isFinite(n) || n < 0) return 0;
   return Math.min(n, 24 * 60);
+}
+
+function readExtendedDayStartHour(formData: FormData, extendShiftNextDay: boolean): number {
+  if (!extendShiftNextDay) return normalizeExtendedDayStartHour(8);
+  const raw = String(formData.get("extendedDayStartHour") ?? "8").trim();
+  const n = parseInt(raw, 10);
+  return normalizeExtendedDayStartHour(Number.isFinite(n) ? n : 8);
 }
 
 function readScheduleOptions(formData: FormData) {
@@ -69,6 +77,7 @@ export async function createWorkSchedule(formData: FormData) {
   const opts = readScheduleOptions(formData);
   const isOpen = readCheckbox(formData, "isOpen");
   const extendShiftNextDay = !isOpen && readCheckbox(formData, "extendShiftNextDay");
+  const extendedDayStartHour = readExtendedDayStartHour(formData, extendShiftNextDay);
 
   if (isOpen) {
     const hoursStr = String(formData.get("expectedDailyHours") ?? "").trim().replace(",", ".");
@@ -122,6 +131,7 @@ export async function createWorkSchedule(formData: FormData) {
       description,
       isOpen: false,
       extendShiftNextDay,
+      extendedDayStartHour,
       expectedDailyMinutes: null,
       ...opts,
       days: { create: dayCreates },
@@ -155,6 +165,7 @@ export async function updateWorkSchedule(formData: FormData) {
   const opts = readScheduleOptions(formData);
   const isOpen = readCheckbox(formData, "isOpen");
   const extendShiftNextDay = !isOpen && readCheckbox(formData, "extendShiftNextDay");
+  const extendedDayStartHour = readExtendedDayStartHour(formData, extendShiftNextDay);
 
   if (isOpen) {
     const hoursStr = String(formData.get("expectedDailyHours") ?? "").trim().replace(",", ".");
@@ -213,6 +224,7 @@ export async function updateWorkSchedule(formData: FormData) {
         description,
         isOpen: false,
         extendShiftNextDay,
+        extendedDayStartHour,
         expectedDailyMinutes: null,
         ...opts,
         days: { create: dayCreates },

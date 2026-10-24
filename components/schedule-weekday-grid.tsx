@@ -15,6 +15,8 @@ export type ScheduleGridInitial = {
   deductLateFromOvertime: boolean;
   isOpen: boolean;
   extendShiftNextDay: boolean;
+  /** بداية اليوم المنطقي (0–23) عند الدوام الممتد — البصمات قبلها تُحسب لليوم السابق. */
+  extendedDayStartHour: number;
   /** ساعات يومية للدوام المفتوح (رقم عشري مثل ٨ أو ٨٫٢٥) */
   expectedDailyHours: number | null;
   days: Array<{
@@ -277,6 +279,28 @@ export function ScheduleWeekdayGrid({
               </span>
             </span>
           </label>
+        </div>
+
+        <div
+          className={`mt-4 rounded-lg border border-slate-200 bg-slate-50/80 p-4 ${!extendOvernight || isOpenSchedule ? "hidden" : ""}`}
+          aria-hidden={!extendOvernight || isOpenSchedule}
+        >
+          <label htmlFor="extendedDayStartHour" className={labelClass}>
+            بداية اليوم الجديد (ساعة)
+          </label>
+          <input
+            id="extendedDayStartHour"
+            name="extendedDayStartHour"
+            type="number"
+            min={0}
+            max={23}
+            className={`${fieldClass} max-w-[8rem]`}
+            defaultValue={init?.extendedDayStartHour ?? 8}
+          />
+          <p className="mt-2 text-xs leading-relaxed text-slate-600">
+            عند الدوام الممتد: أي بصمة قبل هذه الساعة (مثلاً 06:00 = بصمة 05:59 تبع اليوم السابق، 06:00 تبع
+            اليوم الجديد). للدوام حتى 5 ص اضبط القيمة على 6.
+          </p>
         </div>
 
         <div

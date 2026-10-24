@@ -152,10 +152,10 @@ export default async function PayrollOvertimeVsLateDetailPage({
                 <tr key={r.dateKey} className="hover:bg-slate-50/80">
                   <td className="px-2 py-3 tabular-nums text-slate-800">{formatReportDateOnly(r.date)}</td>
                   <td className="px-2 py-3 text-slate-600">{r.weekdayLabel}</td>
-                  <td className="px-2 py-3 tabular-nums">
+                  <td className="px-2 py-3 tabular-nums font-semibold text-slate-900 print:text-[0.65rem]">
                     {r.checkInAt ? formatReportTimeOnly(r.checkInAt) : "—"}
                   </td>
-                  <td className="px-2 py-3 tabular-nums">
+                  <td className="px-2 py-3 tabular-nums font-semibold text-slate-900 print:text-[0.65rem]">
                     {r.checkOutAt ? formatReportTimeOnly(r.checkOutAt) : "—"}
                   </td>
                   <td className="px-2 py-3 tabular-nums text-emerald-700">

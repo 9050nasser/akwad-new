@@ -20,6 +20,13 @@ import {
   type CompanyAttendancePolicy,
   type CompanyOvertimePolicy,
 } from "@/lib/company-attendance";
+import {
+  attendanceQueryUpperBound,
+  extendedShiftPolicyFromSchedule,
+  maxExtendedDayStartHour,
+  punchLogicalInstant,
+  type ExtendedShiftPolicy,
+} from "@/lib/attendance-logical-day";
 import { formatReportDateOnly } from "@/lib/format";
 import { expandHolidaysToDayKeys, holidayOverlapWhere } from "@/lib/holidays";
 import {
@@ -118,9 +125,8 @@ export async function getDailyStatus(params: DailyStatusParams) {
   const fridayOff = !attendancePolicy.fridayIsWorkday;
   const cGrace = attendancePolicy.lateGraceMinutes;
 
-  // --- بداية التعديل: توسيع نافذة البحث لـ 8 صباحاً من اليوم التالي ---
-  const queryEnd = new Date(end);
-  queryEnd.setHours(queryEnd.getHours() + 8); 
+  const extendPolicies = employees.map((emp) => extendedShiftPolicyFromSchedule(emp.workSchedule));
+  const queryEnd = attendanceQueryUpperBound(end, maxExtendedDayStartHour(extendPolicies));
 
   const events = await prisma.attendanceEvent.findMany({
     where: {
@@ -132,20 +138,20 @@ export async function getDailyStatus(params: DailyStatusParams) {
     orderBy: { at: "asc" },
   });
 
-  const empExtendMap = new Map<string, boolean>();
+  const empExtendMap = new Map<string, ExtendedShiftPolicy>();
   for (const emp of employees) {
-    empExtendMap.set(emp.id, emp.workSchedule?.extendShiftNextDay === true);
+    empExtendMap.set(emp.id, extendedShiftPolicyFromSchedule(emp.workSchedule));
   }
 
   const byEmp = new Map<string, typeof events>();
   for (const e of events) {
     if (!e.employeeId) continue;
 
-    const extendsNextDay = empExtendMap.get(e.employeeId);
-    const isNextDayMorning = e.at.getTime() > end.getTime(); 
+    const extendPolicy = empExtendMap.get(e.employeeId);
+    const isNextDayMorning = e.at.getTime() > end.getTime();
 
     // إذا كانت البصمة في اليوم التالي والموظف ليس لديه شفت ممتد، نتجاهلها
-    if (isNextDayMorning && !extendsNextDay) continue;
+    if (isNextDayMorning && !extendPolicy?.extendShiftNextDay) continue;
 
     const arr = byEmp.get(e.employeeId) ?? [];
     arr.push(e);
@@ -668,9 +674,8 @@ export async function getEmployeesAttendanceDetailReport(params: {
   const fridayOff = !attendancePolicy.fridayIsWorkday;
   const cGrace = attendancePolicy.lateGraceMinutes;
 
-  // --- بداية التعديل ---
-  const queryTo = new Date(params.to);
-  queryTo.setHours(queryTo.getHours() + 8); // تمديد لـ 8 صباحاً من اليوم التالي لنهاية التقرير
+  const extendPolicies = employees.map((emp) => extendedShiftPolicyFromSchedule(emp.workSchedule));
+  const queryTo = attendanceQueryUpperBound(params.to, maxExtendedDayStartHour(extendPolicies));
 
   const events = await prisma.attendanceEvent.findMany({
     where: {
@@ -683,9 +688,9 @@ export async function getEmployeesAttendanceDetailReport(params: {
     select: { employeeId: true, at: true, kind: true },
   });
 
-  const empExtendMap = new Map<string, boolean>();
+  const empExtendMap = new Map<string, ExtendedShiftPolicy>();
   for (const emp of employees) {
-    empExtendMap.set(emp.id, emp.workSchedule?.extendShiftNextDay === true);
+    empExtendMap.set(emp.id, extendedShiftPolicyFromSchedule(emp.workSchedule));
   }
 
   type Ev = (typeof events)[number];
@@ -694,13 +699,8 @@ export async function getEmployeesAttendanceDetailReport(params: {
   for (const e of events) {
     if (!e.employeeId) continue;
 
-    const extendsNextDay = empExtendMap.get(e.employeeId);
-    let logicalDate = new Date(e.at);
-
-    // إرجاع البصمة لليوم السابق منطقياً إذا كانت قبل 8 صباحاً وكان الشفت ممتداً
-    if (extendsNextDay && logicalDate.getHours() < 8) {
-      logicalDate.setDate(logicalDate.getDate() - 1);
-    }
+    const extendPolicy = empExtendMap.get(e.employeeId) ?? extendedShiftPolicyFromSchedule(null);
+    const logicalDate = punchLogicalInstant(new Date(e.at), extendPolicy);
 
     // تجاهل البصمات التي تخرج عن نافذة التقرير المطلوبة بعد التعديل المنطقي
     if (logicalDate.getTime() > params.to.getTime()) continue;
@@ -919,9 +919,8 @@ export async function getEmployeeReport(params: {
   });
   if (!employee) return null;
 
-  // --- تمديد نافذة البحث ---
-  const queryTo = new Date(params.to);
-  queryTo.setHours(queryTo.getHours() + 8);
+  const extendPolicy = extendedShiftPolicyFromSchedule(employee.workSchedule);
+  const queryTo = attendanceQueryUpperBound(params.to, extendPolicy.extendedDayStartHour);
 
   const events = await prisma.attendanceEvent.findMany({
     where: {
@@ -939,15 +938,9 @@ export async function getEmployeeReport(params: {
   const punchWin = employeeAttendancePolicy.punchDedupeMinutes;
   const fridayOff = !employeeAttendancePolicy.fridayIsWorkday;
 
-  const extendsNextDay = employee.workSchedule?.extendShiftNextDay === true;
-
   const byDay = new Map<string, typeof events>();
   for (const e of events) {
-    let logicalDate = new Date(e.at);
-    // --- إرجاع اليوم المنطقي ---
-    if (extendsNextDay && logicalDate.getHours() < 8) {
-      logicalDate.setDate(logicalDate.getDate() - 1);
-    }
+    const logicalDate = punchLogicalInstant(new Date(e.at), extendPolicy);
     // --- تجاهل البصمات خارج النطاق ---
     if (logicalDate.getTime() > params.to.getTime() || logicalDate.getTime() < params.from.getTime()) continue;
 
@@ -1112,14 +1105,18 @@ async function loadAbsencePresenceCore(params: {
     include: {
       branch: true,
       jobTitle: { select: { name: true } },
-      workSchedule: { select: { name: true, isOpen: true, extendShiftNextDay: true } },
+      workSchedule: {
+        select: { name: true, isOpen: true, extendShiftNextDay: true, extendedDayStartHour: true },
+      },
     },
   });
 
   const calendarDays = eachCalendarDay(params.from, params.to);
 
-  const queryTo = new Date(params.to);
-  queryTo.setHours(queryTo.getHours() + 8);
+  const queryTo = attendanceQueryUpperBound(
+    params.to,
+    maxExtendedDayStartHour(employees.map((e) => extendedShiftPolicyFromSchedule(e.workSchedule))),
+  );
 
   const postedMarkers = await prisma.attendanceEvent.findMany({
     where: {
@@ -1139,12 +1136,10 @@ async function loadAbsencePresenceCore(params: {
     if (!e.employeeId || !empIdSet.has(e.employeeId)) continue;
     const emp = empById.get(e.employeeId);
     
-    let logicalDate = new Date(e.at);
-    const extendsNextDay = emp?.workSchedule?.extendShiftNextDay === true;
-    
-    if (extendsNextDay && logicalDate.getHours() < 8) {
-      logicalDate.setDate(logicalDate.getDate() - 1);
-    }
+    const logicalDate = punchLogicalInstant(
+      new Date(e.at),
+      extendedShiftPolicyFromSchedule(emp?.workSchedule),
+    );
     if (logicalDate.getTime() > params.to.getTime() || logicalDate.getTime() < params.from.getTime()) continue;
 
     const open = emp?.workSchedule?.isOpen;
@@ -1284,8 +1279,10 @@ async function loadFixedScheduleRollupByEmployee(params: {
   const perEmp = new Map<string, ShiftDayMetrics & { name: string; branch: string }>();
   if (fixedIds.length === 0) return perEmp;
 
-  const queryTo = new Date(params.to);
-  queryTo.setHours(queryTo.getHours() + 8);
+  const queryTo = attendanceQueryUpperBound(
+    params.to,
+    maxExtendedDayStartHour(fixed.map((emp) => extendedShiftPolicyFromSchedule(emp.workSchedule))),
+  );
 
   const dayEvents = await prisma.attendanceEvent.findMany({
     where: {
@@ -1298,21 +1295,17 @@ async function loadFixedScheduleRollupByEmployee(params: {
     select: { employeeId: true, at: true, kind: true },
   });
 
-  const empExtendMap = new Map<string, boolean>();
+  const empExtendMap = new Map<string, ExtendedShiftPolicy>();
   for (const emp of fixed) {
-    empExtendMap.set(emp.id, emp.workSchedule?.extendShiftNextDay === true);
+    empExtendMap.set(emp.id, extendedShiftPolicyFromSchedule(emp.workSchedule));
   }
 
   const groups = new Map<string, { employeeId: string; atSample: Date; events: { at: Date; kind: string }[] }>();
   for (const e of dayEvents) {
     if (!e.employeeId) continue;
-    
-    let logicalDate = new Date(e.at);
-    const extendsNextDay = empExtendMap.get(e.employeeId);
-    
-    if (extendsNextDay && logicalDate.getHours() < 8) {
-      logicalDate.setDate(logicalDate.getDate() - 1);
-    }
+
+    const extendPolicy = empExtendMap.get(e.employeeId) ?? extendedShiftPolicyFromSchedule(null);
+    const logicalDate = punchLogicalInstant(new Date(e.at), extendPolicy);
     if (logicalDate.getTime() > params.to.getTime() || logicalDate.getTime() < params.from.getTime()) continue;
 
     const key = `${e.employeeId}:${localDayKey(logicalDate)}`;
@@ -1542,9 +1535,11 @@ export async function getDelaySummary(params: {
 
   const spanMap = new Map<string, { first: Date; last: Date }>();
   if (openIds.length > 0) {
-    // --- التعديل يبدأ من هنا ---
-    const queryTo = new Date(params.to);
-    queryTo.setHours(queryTo.getHours() + 8); // تمديد لـ 8 صباحاً
+    const openEmps = employees.filter((e) => openIds.includes(e.id));
+    const queryTo = attendanceQueryUpperBound(
+      params.to,
+      maxExtendedDayStartHour(openEmps.map((emp) => extendedShiftPolicyFromSchedule(emp.workSchedule))),
+    );
 
     const spans = await prisma.attendanceEvent.findMany({
       where: {
@@ -1561,14 +1556,10 @@ export async function getDelaySummary(params: {
       if (!e.employeeId) continue;
       
       const emp = employees.find(x => x.id === e.employeeId);
-      let logicalDate = new Date(e.at);
-      const extendsNextDay = emp?.workSchedule?.extendShiftNextDay === true;
-      
-      // إرجاع البصمة لليوم السابق منطقياً إذا كانت قبل 8 صباحاً وكان الشفت ممتداً
-      if (extendsNextDay && logicalDate.getHours() < 8) {
-        logicalDate.setDate(logicalDate.getDate() - 1);
-      }
-      // تجاهل البصمات خارج نافذة التقرير المطلوبة
+      const logicalDate = punchLogicalInstant(
+        new Date(e.at),
+        extendedShiftPolicyFromSchedule(emp?.workSchedule),
+      );
       if (logicalDate.getTime() > params.to.getTime() || logicalDate.getTime() < params.from.getTime()) continue;
 
       const dayKey = `${e.employeeId}:${logicalDate.toISOString().slice(0, 10)}`;
@@ -1672,9 +1663,11 @@ export async function getOpenScheduleBalanceSummary(params: {
 
   if (openIds.length === 0) return { rows: [] };
 
-  // --- التعديل يبدأ من هنا ---
-  const queryTo = new Date(params.to);
-  queryTo.setHours(queryTo.getHours() + 8); // تمديد لـ 8 صباحاً
+  const openEmps = employees.filter((e) => openIds.includes(e.id));
+  const queryTo = attendanceQueryUpperBound(
+    params.to,
+    maxExtendedDayStartHour(openEmps.map((emp) => extendedShiftPolicyFromSchedule(emp.workSchedule))),
+  );
 
   const spans = await prisma.attendanceEvent.findMany({
     where: {
@@ -1692,14 +1685,10 @@ export async function getOpenScheduleBalanceSummary(params: {
     if (!e.employeeId) continue;
 
     const emp = employees.find(x => x.id === e.employeeId);
-    let logicalDate = new Date(e.at);
-    const extendsNextDay = emp?.workSchedule?.extendShiftNextDay === true;
-    
-    // إرجاع البصمة لليوم السابق منطقياً إذا كانت قبل 8 صباحاً وكان الشفت ممتداً
-    if (extendsNextDay && logicalDate.getHours() < 8) {
-      logicalDate.setDate(logicalDate.getDate() - 1);
-    }
-    // تجاهل البصمات خارج نافذة التقرير المطلوبة
+    const logicalDate = punchLogicalInstant(
+      new Date(e.at),
+      extendedShiftPolicyFromSchedule(emp?.workSchedule),
+    );
     if (logicalDate.getTime() > params.to.getTime() || logicalDate.getTime() < params.from.getTime()) continue;
 
     const dayKey = `${e.employeeId}:${logicalDate.toISOString().slice(0, 10)}`;
@@ -1795,22 +1784,24 @@ export async function getIncompleteRows(params: {
   const days = eachCalendarDay(params.from, params.to);
   const employees = await prisma.employee.findMany({
     where: employeeReportWhere(params.companyId, params.branchId, params.employeeFilters),
-    include: { branch: true, workSchedule: { select: { extendShiftNextDay: true } } },
+    include: {
+      branch: true,
+      workSchedule: { select: { extendShiftNextDay: true, extendedDayStartHour: true } },
+    },
   });
 
   const rows: IncompleteMovementRow[] = [];
 
   for (const emp of employees) {
-    const extendsNextDay = emp.workSchedule?.extendShiftNextDay === true;
-    
+    const extendPolicy = extendedShiftPolicyFromSchedule(emp.workSchedule);
+
     for (const day of days) {
       const start = new Date(day);
       start.setHours(0, 0, 0, 0);
       const end = new Date(day);
       end.setHours(23, 59, 59, 999);
 
-      const queryEnd = new Date(end);
-      queryEnd.setHours(queryEnd.getHours() + 8);
+      const queryEnd = attendanceQueryUpperBound(end, extendPolicy.extendedDayStartHour);
 
       const evRaw = await prisma.attendanceEvent.findMany({
         where: {
@@ -1824,11 +1815,8 @@ export async function getIncompleteRows(params: {
 
       if (evRaw.length === 0) continue;
 
-      const ev = evRaw.filter(e => {
-        let logicalDate = new Date(e.at);
-        if (extendsNextDay && logicalDate.getHours() < 8) {
-          logicalDate.setDate(logicalDate.getDate() - 1);
-        }
+      const ev = evRaw.filter((e) => {
+        const logicalDate = punchLogicalInstant(new Date(e.at), extendPolicy);
         return logicalDate.getTime() >= start.getTime() && logicalDate.getTime() <= end.getTime();
       });
 
@@ -1906,10 +1894,9 @@ export async function getEmployeesAttendanceSummaryRollup(params: {
   const fridayOff = !attendancePolicy.fridayIsWorkday;
   const cGrace = attendancePolicy.lateGraceMinutes;
 
-  // --- بداية التعديل ---
-  const queryTo = new Date(params.to);
-  queryTo.setHours(queryTo.getHours() + 8);
-  
+  const extendPolicies = employees.map((emp) => extendedShiftPolicyFromSchedule(emp.workSchedule));
+  const queryTo = attendanceQueryUpperBound(params.to, maxExtendedDayStartHour(extendPolicies));
+
   const events = await prisma.attendanceEvent.findMany({
     where: {
       isPosted: true,
@@ -1921,9 +1908,9 @@ export async function getEmployeesAttendanceSummaryRollup(params: {
     select: { employeeId: true, at: true, kind: true },
   });
 
-  const empExtendMap = new Map<string, boolean>();
+  const empExtendMap = new Map<string, ExtendedShiftPolicy>();
   for (const emp of employees) {
-    empExtendMap.set(emp.id, emp.workSchedule?.extendShiftNextDay === true);
+    empExtendMap.set(emp.id, extendedShiftPolicyFromSchedule(emp.workSchedule));
   }
 
   type Ev = (typeof events)[number];
@@ -1932,12 +1919,8 @@ export async function getEmployeesAttendanceSummaryRollup(params: {
   for (const e of events) {
     if (!e.employeeId) continue;
 
-    const extendsNextDay = empExtendMap.get(e.employeeId);
-    let logicalDate = new Date(e.at);
-
-    if (extendsNextDay && logicalDate.getHours() < 8) {
-      logicalDate.setDate(logicalDate.getDate() - 1);
-    }
+    const extendPolicy = empExtendMap.get(e.employeeId) ?? extendedShiftPolicyFromSchedule(null);
+    const logicalDate = punchLogicalInstant(new Date(e.at), extendPolicy);
 
     if (logicalDate.getTime() > params.to.getTime()) continue;
     if (logicalDate.getTime() < params.from.getTime()) continue;
