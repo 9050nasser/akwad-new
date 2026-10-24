@@ -78,6 +78,7 @@ export async function createWorkSchedule(formData: FormData) {
   const isOpen = readCheckbox(formData, "isOpen");
   const extendShiftNextDay = !isOpen && readCheckbox(formData, "extendShiftNextDay");
   const extendedDayStartHour = readExtendedDayStartHour(formData, extendShiftNextDay);
+  const useFirstLastPunch = !isOpen && readCheckbox(formData, "useFirstLastPunch");
 
   if (isOpen) {
     const hoursStr = String(formData.get("expectedDailyHours") ?? "").trim().replace(",", ".");
@@ -94,6 +95,7 @@ export async function createWorkSchedule(formData: FormData) {
         description,
         isOpen: true,
         extendShiftNextDay: false,
+        useFirstLastPunch: false,
         expectedDailyMinutes,
         ...opts,
       },
@@ -132,6 +134,7 @@ export async function createWorkSchedule(formData: FormData) {
       isOpen: false,
       extendShiftNextDay,
       extendedDayStartHour,
+      useFirstLastPunch,
       expectedDailyMinutes: null,
       ...opts,
       days: { create: dayCreates },
@@ -166,6 +169,7 @@ export async function updateWorkSchedule(formData: FormData) {
   const isOpen = readCheckbox(formData, "isOpen");
   const extendShiftNextDay = !isOpen && readCheckbox(formData, "extendShiftNextDay");
   const extendedDayStartHour = readExtendedDayStartHour(formData, extendShiftNextDay);
+  const useFirstLastPunch = !isOpen && readCheckbox(formData, "useFirstLastPunch");
 
   if (isOpen) {
     const hoursStr = String(formData.get("expectedDailyHours") ?? "").trim().replace(",", ".");
@@ -184,6 +188,7 @@ export async function updateWorkSchedule(formData: FormData) {
           description,
           isOpen: true,
           extendShiftNextDay: false,
+          useFirstLastPunch: false,
           expectedDailyMinutes,
           ...opts,
         },
@@ -225,6 +230,7 @@ export async function updateWorkSchedule(formData: FormData) {
         isOpen: false,
         extendShiftNextDay,
         extendedDayStartHour,
+        useFirstLastPunch,
         expectedDailyMinutes: null,
         ...opts,
         days: { create: dayCreates },

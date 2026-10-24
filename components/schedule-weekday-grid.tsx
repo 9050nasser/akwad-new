@@ -15,6 +15,7 @@ export type ScheduleGridInitial = {
   deductLateFromOvertime: boolean;
   isOpen: boolean;
   extendShiftNextDay: boolean;
+  useFirstLastPunch: boolean;
   /** بداية اليوم المنطقي (0–23) عند الدوام الممتد — البصمات قبلها تُحسب لليوم السابق. */
   extendedDayStartHour: number;
   /** ساعات يومية للدوام المفتوح (رقم عشري مثل ٨ أو ٨٫٢٥) */
@@ -77,6 +78,7 @@ export function ScheduleWeekdayGrid({
   );
   const [isOpenSchedule, setIsOpenSchedule] = useState(() => initialSchedule?.isOpen ?? false);
   const [extendOvernight, setExtendOvernight] = useState(() => initialSchedule?.extendShiftNextDay ?? false);
+  const [useFirstLastPunch, setUseFirstLastPunch] = useState(() => initialSchedule?.useFirstLastPunch ?? false);
   const [previewTick, bumpPreview] = useReducer((n: number) => n + 1, 0);
   const [preview, setPreview] = useState<{
     shift: Record<string, string>;
@@ -276,6 +278,23 @@ export function ScheduleWeekdayGrid({
               <span className="font-medium text-slate-900">دوام ممتد</span>
               <span className="mt-0.5 block text-xs font-normal text-slate-600">
                 نهاية الشفت قد تكون بعد منتصف الليل (مثل ٢٢:٠٠ → ٠٦:٠٠).
+              </span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3 text-sm text-slate-800">
+            <input
+              type="checkbox"
+              name="useFirstLastPunch"
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300"
+              disabled={isOpenSchedule}
+              checked={useFirstLastPunch}
+              onChange={(e) => setUseFirstLastPunch(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium text-slate-900">أول بصمة دخول — آخر بصمة انصراف</span>
+              <span className="mt-0.5 block text-xs font-normal text-slate-600">
+                للدوام الثابت: يُحسب اليوم من أول حركة إلى آخر حركة (مناسب إذا الجهاز يرسل كل البصمات «دخول» فقط).
+                التأخير مقابل بداية أول شفت والانصراف المبكر مقابل نهاية آخر شفت.
               </span>
             </span>
           </label>

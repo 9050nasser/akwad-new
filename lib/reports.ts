@@ -3,11 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { attendanceForCompany, employeesForCompany } from "@/lib/company-scope";
 import { eachCalendarDay, localDayRange, parseDateOnly } from "@/lib/day-range";
 import {
+  buildAttendanceDayPairs,
   firstCheckInLastCheckOutOfDay,
   localCalendarDayStart,
   localDayKey,
   metricsForFixedDay,
-  pairInOutSequence,
   preparePunchesForAttendanceReport,
   totalScheduledMinutesForSegments,
   type DaySegment,
@@ -213,7 +213,8 @@ export async function getDailyStatus(params: DailyStatusParams) {
       list.map((x) => ({ at: x.at, kind: x.kind })),
       attendancePolicy.punchDedupeMinutes,
     );
-    const pairs = pairInOutSequence(deduped);
+    const useFirstLast = sched?.useFirstLastPunch === true;
+    const pairs = buildAttendanceDayPairs(deduped, { useFirstLastPunch: useFirstLast });
     const firstLast = firstCheckInLastCheckOutOfDay(deduped);
 
     if (!sched) {
@@ -278,6 +279,7 @@ export async function getDailyStatus(params: DailyStatusParams) {
           sched.graceOutMinutes ?? 0,
           pairs,
           attendancePolicy.lateGraceMinutes,
+          useFirstLast,
         );
         lateMinutes = m.lateMinutes;
         workMinutes = m.workedMinutes;
@@ -286,10 +288,15 @@ export async function getDailyStatus(params: DailyStatusParams) {
         overtimeMinutes = applyCompanyOvertimeMinutes(surplusRaw, overtimePolicy);
       }
 
-      shift1In = pairs[0]?.in;
-      shift1Out = pairs[0]?.out;
-      shift2In = pairs[1]?.in;
-      shift2Out = pairs[1]?.out;
+      if (useFirstLast) {
+        shift1In = firstLast.firstIn;
+        shift1Out = firstLast.lastOut;
+      } else {
+        shift1In = pairs[0]?.in;
+        shift1Out = pairs[0]?.out;
+        shift2In = pairs[1]?.in;
+        shift2Out = pairs[1]?.out;
+      }
     }
 
     const empLeaves = leavesByEmp.get(emp.id) ?? [];
@@ -382,6 +389,7 @@ type EmpForAttendanceDetailDay = {
     enableOvertimeCalc: boolean | null;
     deductLateFromOvertime: boolean | null;
     extendShiftNextDay: boolean;
+    useFirstLastPunch?: boolean | null;
     days: {
       weekday: number;
       segmentOrder: number;
@@ -528,7 +536,8 @@ function computeAttendanceDetailRowForEmployeeDay(input: {
     list.map((x) => ({ at: x.at, kind: x.kind })),
     attendancePolicy.punchDedupeMinutes,
   );
-  const pairs = pairInOutSequence(deduped);
+  const useFirstLast = !isOpen && sched?.useFirstLastPunch === true;
+  const pairs = buildAttendanceDayPairs(deduped, { useFirstLastPunch: useFirstLast });
   const firstLast = firstCheckInLastCheckOutOfDay(deduped);
 
   const checkInAt = firstLast.firstIn;
@@ -600,6 +609,7 @@ function computeAttendanceDetailRowForEmployeeDay(input: {
         sched.graceOutMinutes ?? 0,
         pairs,
         attendancePolicy.lateGraceMinutes,
+        useFirstLast,
       );
       lateMinutes = dayM.lateMinutes;
       actualWorkMinutes = dayM.workedMinutes;
@@ -1251,6 +1261,7 @@ type EmployeeWithScheduleDays = {
   workSchedule: null | {
     isOpen: boolean;
     extendShiftNextDay: boolean;
+    useFirstLastPunch?: boolean;
     graceInMinutes: number;
     graceOutMinutes: number;
     days: {
@@ -1336,7 +1347,8 @@ async function loadFixedScheduleRollupByEmployee(params: {
       }));
     if (!segments.length) continue;
     const deduped = preparePunchesForAttendanceReport(g.events, params.attendancePolicy.punchDedupeMinutes);
-    const pairs = pairInOutSequence(deduped);
+    const useFirstLast = sched.useFirstLastPunch === true;
+    const pairs = buildAttendanceDayPairs(deduped, { useFirstLastPunch: useFirstLast });
     const m = metricsForFixedDay(
       dayStart,
       segments,
@@ -1345,6 +1357,7 @@ async function loadFixedScheduleRollupByEmployee(params: {
       sched.graceOutMinutes ?? 0,
       pairs,
       params.attendancePolicy.lateGraceMinutes,
+      useFirstLast,
     );
 
     const cur = perEmp.get(emp.id);

@@ -48,6 +48,7 @@ export default async function EditSchedulePage({
     deductLateFromOvertime: schedule.deductLateFromOvertime,
     isOpen: schedule.isOpen,
     extendShiftNextDay: schedule.extendShiftNextDay,
+    useFirstLastPunch: schedule.useFirstLastPunch ?? false,
     extendedDayStartHour: schedule.extendedDayStartHour ?? 8,
     expectedDailyHours,
     days: schedule.isOpen

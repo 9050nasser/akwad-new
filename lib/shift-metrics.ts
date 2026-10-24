@@ -114,6 +114,25 @@ export function dedupePunchSequence<T extends { at: Date; kind: string }>(events
   return out;
 }
 
+/**
+ * أزواج دخول/خروج ليوم واحد: إما أول/آخر بصمة أو إقران متناوب (دخول، خروج، …).
+ */
+export function buildAttendanceDayPairs(
+  dedupedSorted: { at: Date; kind: string }[],
+  opts?: { useFirstLastPunch?: boolean },
+): { in?: Date; out?: Date }[] {
+  if (opts?.useFirstLastPunch) {
+    const fl = firstCheckInLastCheckOutOfDay(dedupedSorted);
+    if (fl.firstIn && fl.lastOut && fl.lastOut.getTime() > fl.firstIn.getTime()) {
+      return [{ in: fl.firstIn, out: fl.lastOut }];
+    }
+    if (fl.firstIn) return [{ in: fl.firstIn }];
+    if (fl.lastOut) return [{ out: fl.lastOut }];
+    return [];
+  }
+  return pairInOutSequence(dedupedSorted);
+}
+
 /** يقرأ تسلسل البصمات ويُكوّن أزواجاً بالترتيب زمنياً بغض النظر عن نوع البصمة (تلقائي الدخول والخروج). */
 export function pairInOutSequence(events: { at: Date; kind: string }[]): { in?: Date; out?: Date }[] {
   const sorted = [...events].sort((a, b) => a.at.getTime() - b.at.getTime());
@@ -183,6 +202,7 @@ export function metricsForFixedDay(
   pairs: { in?: Date; out?: Date }[],
   /** هامش إضافي من إعدادات الشركة (دقائق) يُضاف لسماح الدخول/الخروج في الشفت. */
   companyGraceMinutes = 0,
+  useFirstLastPunch = false,
 ): ShiftDayMetrics {
   const out = emptyMetrics();
   if (!segments.length) return out;
@@ -190,6 +210,50 @@ export function metricsForFixedDay(
   const segs = [...segments]
     .slice()
     .sort((a, b) => a.segmentOrder - b.segmentOrder || a.startTime.localeCompare(b.startTime));
+
+  if (useFirstLastPunch) {
+    const pair = pairs[0] ?? {};
+    const firstSeg = segs[0];
+    const lastSeg = segs[segs.length - 1];
+    const cg = Math.max(0, companyGraceMinutes);
+
+    const gin0 =
+      (firstSeg.graceInMinutes > 0 ? firstSeg.graceInMinutes : scheduleGraceIn) + cg;
+    const { start: start0 } = segmentWindow(dayStart, firstSeg.startTime, firstSeg.endTime, extendNextDay);
+    if (pair.in) {
+      const diffInMs = pair.in.getTime() - start0.getTime();
+      const lateBlockMin = Math.floor(diffInMs / 60000);
+      if (lateBlockMin > gin0) {
+        out.lateShifts += 1;
+        out.lateMinutes += lateBlockMin - gin0;
+      } else if (diffInMs < 0) {
+        const earlyMin = Math.floor((start0.getTime() - pair.in.getTime()) / 60000);
+        if (earlyMin > 0) {
+          out.earlyArrivalShifts += 1;
+          out.earlyArrivalMinutes += earlyMin;
+        }
+      }
+    }
+
+    const goutLast =
+      (lastSeg.graceOutMinutes > 0 ? lastSeg.graceOutMinutes : scheduleGraceOut) + cg;
+    const { end: endLast } = segmentWindow(dayStart, lastSeg.startTime, lastSeg.endTime, extendNextDay);
+    if (pair.out) {
+      const cutoffMs = endLast.getTime() - goutLast * 60000;
+      if (pair.out.getTime() < cutoffMs) {
+        const earlyLeaveMin = Math.floor((cutoffMs - pair.out.getTime()) / 60000);
+        if (earlyLeaveMin > 0) {
+          out.earlyLeaveShifts += 1;
+          out.earlyLeaveMinutes += earlyLeaveMin;
+        }
+      }
+    }
+
+    if (pair.in && pair.out) {
+      out.workedMinutes = Math.max(0, Math.round((pair.out.getTime() - pair.in.getTime()) / 60000));
+    }
+    return out;
+  }
 
   for (let i = 0; i < segs.length; i++) {
     const seg = segs[i];

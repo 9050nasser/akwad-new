@@ -101,6 +101,11 @@ export default async function SchedulesPage({
                     دوام ممتد
                   </span>
                 ) : null}
+                {!s.isOpen && s.useFirstLastPunch ? (
+                  <span className="rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-900">
+                    أول/آخر بصمة
+                  </span>
+                ) : null}
               </div>
               <div className="mt-3 space-y-1 border-t border-slate-200/80 pt-3 text-xs text-slate-600">
                 {(s.graceInMinutes ?? 0) > 0 || (s.graceOutMinutes ?? 0) > 0 ? (
