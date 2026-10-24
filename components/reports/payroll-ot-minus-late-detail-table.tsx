@@ -4,15 +4,25 @@ import {
   formatReportTimeOnly,
   formatSignedDurationMinutes,
 } from "@/lib/format";
-import type { PayrollOvertimeVsLateDayRow } from "@/lib/payroll-overtime-vs-late";
+import type {
+  PayrollOvertimeVsLateDayRow,
+  PayrollOvertimeVsLatePeriodTotals,
+} from "@/lib/payroll-overtime-vs-late";
 
 type Props = {
   rows: PayrollOvertimeVsLateDayRow[];
   missingPackageSalary: boolean;
   fmtMoney: (n: number) => string;
+  /** إجمالي الفترة من تقرير الرواتب (يظهر أسفل جمع الأيام). */
+  payrollPeriodTotals?: PayrollOvertimeVsLatePeriodTotals | null;
 };
 
-export function PayrollOtMinusLateDetailTable({ rows, missingPackageSalary, fmtMoney }: Props) {
+export function PayrollOtMinusLateDetailTable({
+  rows,
+  missingPackageSalary,
+  fmtMoney,
+  payrollPeriodTotals,
+}: Props) {
   const totals = rows.reduce(
     (acc, r) => {
       acc.ot += r.overtimeMinutes;
@@ -73,17 +83,40 @@ export function PayrollOtMinusLateDetailTable({ rows, missingPackageSalary, fmtM
         </tbody>
         <tfoot className="border-t-2 border-slate-200 bg-slate-50 text-xs font-semibold text-slate-900">
           <tr>
-            <td colSpan={4} className="px-2 py-3">
-              إجمالي الفترة
+            <td colSpan={4} className="px-2 py-3 text-slate-600">
+              جمع الأيام (تفصيلي)
             </td>
             <td className="px-2 py-3 tabular-nums text-emerald-800">{formatDurationMinutes(totals.ot)}</td>
             <td className="px-2 py-3 tabular-nums text-rose-800">{formatDurationMinutes(totals.late)}</td>
             <td className="px-2 py-3 tabular-nums">{formatSignedDurationMinutes(totals.net)}</td>
-            <td className="px-2 py-3 tabular-nums text-teal-900">
+            <td className="px-2 py-3 tabular-nums text-slate-700">
               {missingPackageSalary ? "—" : fmtMoney(totals.amount)}
             </td>
             <td className="px-2 py-3" />
           </tr>
+          {payrollPeriodTotals ? (
+            <tr className="border-t border-teal-200 bg-teal-50/70">
+              <td colSpan={4} className="px-2 py-3 text-teal-900">
+                مطابق لتقرير الرواتب
+              </td>
+              <td className="px-2 py-3 tabular-nums text-emerald-900">
+                {formatDurationMinutes(payrollPeriodTotals.overtimeMinutes)}
+              </td>
+              <td className="px-2 py-3 tabular-nums text-rose-900">
+                {formatDurationMinutes(payrollPeriodTotals.lateMinutes)}
+              </td>
+              <td className="px-2 py-3 tabular-nums text-slate-800">
+                {formatSignedDurationMinutes(payrollPeriodTotals.netMinutesOtMinusLate)}
+              </td>
+              <td className="px-2 py-3 tabular-nums text-teal-950">
+                {missingPackageSalary ? "—" : fmtMoney(payrollPeriodTotals.netAttendanceAmount)}
+              </td>
+              <td className="px-2 py-3 text-[0.65rem] font-normal text-teal-800">
+                +{missingPackageSalary ? "—" : fmtMoney(payrollPeriodTotals.additionAmount)} / −
+                {missingPackageSalary ? "—" : fmtMoney(payrollPeriodTotals.deductionAmount)}
+              </td>
+            </tr>
+          ) : null}
         </tfoot>
       </table>
     </div>

@@ -55,10 +55,12 @@ export default async function PayrollOvertimeVsLateSummaryPage({
       acc.ot += r.overtimeMinutes;
       acc.late += r.lateMinutes;
       acc.net += r.netMinutes;
+      acc.add += r.additionAmount;
+      acc.ded += r.deductionAmount;
       acc.amount += r.amount;
       return acc;
     },
-    { ot: 0, late: 0, net: 0, amount: 0 },
+    { ot: 0, late: 0, net: 0, add: 0, ded: 0, amount: 0 },
   );
 
   return (
@@ -111,8 +113,9 @@ export default async function PayrollOvertimeVsLateSummaryPage({
         </form>
 
         <p className="mt-4 text-xs text-slate-600">
-          الفترة: {formatDateOnly(from)} — {formatDateOnly(to)} ({periodDays} يوماً). معامل الساعة: ساعة بساعة — قيمة
-          الدقيقة تُشتق من (الأساسي + البدلات) ÷ (30×8×60).
+          الفترة: {formatDateOnly(from)} — {formatDateOnly(to)} ({periodDays} يوماً). الدقائق والمبالغ هنا من{" "}
+          <span className="font-semibold">نفس محرك تقرير الرواتب</span> (إضافي، خصم حضور = تأخير + خروج مبكر + نقص).
+          قيمة الدقيقة: (الأساسي + البدلات) ÷ (30×8×60).
         </p>
       </div>
 
@@ -132,8 +135,10 @@ export default async function PayrollOvertimeVsLateSummaryPage({
               <th className="px-2 py-3 whitespace-nowrap">قيمة الدقيقة</th>
               <th className="px-2 py-3">الإضافي</th>
               <th className="px-2 py-3">التأخير</th>
-              <th className="px-2 py-3 whitespace-nowrap">فرق الدقائق</th>
-              <th className="px-2 py-3">المبلغ</th>
+              <th className="px-2 py-3 whitespace-nowrap">فرق (إض−تأ)</th>
+              <th className="px-2 py-3 whitespace-nowrap">مبلغ إضافي</th>
+              <th className="px-2 py-3 whitespace-nowrap">خصم حضور</th>
+              <th className="px-2 py-3 whitespace-nowrap">صافي الحضور</th>
               <th className="px-2 py-3 w-28 print:hidden">تفصيلي</th>
             </tr>
           </thead>
@@ -154,8 +159,14 @@ export default async function PayrollOvertimeVsLateSummaryPage({
                   <td className="px-2 py-3 tabular-nums text-slate-800">
                     {formatSignedDurationMinutes(r.netMinutes)}
                   </td>
+                  <td className="px-2 py-3 tabular-nums text-emerald-800 text-xs">
+                    {r.missingPackageSalary ? "—" : fmtMoney(r.additionAmount)}
+                  </td>
+                  <td className="px-2 py-3 tabular-nums text-rose-800 text-xs">
+                    {r.missingPackageSalary ? "—" : fmtMoney(r.deductionAmount)}
+                  </td>
                   <td
-                    className={`px-2 py-3 tabular-nums font-medium ${r.amount >= 0 ? "text-emerald-800" : "text-rose-800"}`}
+                    className={`px-2 py-3 tabular-nums font-medium text-xs ${r.amount >= 0 ? "text-emerald-900" : "text-rose-900"}`}
                   >
                     {r.missingPackageSalary ? "—" : fmtMoney(r.amount)}
                   </td>
@@ -179,6 +190,8 @@ export default async function PayrollOvertimeVsLateSummaryPage({
               <td className="px-2 py-3 tabular-nums text-emerald-800">{formatDurationMinutes(totals.ot)}</td>
               <td className="px-2 py-3 tabular-nums text-rose-800">{formatDurationMinutes(totals.late)}</td>
               <td className="px-2 py-3 tabular-nums">{formatSignedDurationMinutes(totals.net)}</td>
+              <td className="px-2 py-3 tabular-nums text-emerald-900">{fmtMoney(totals.add)}</td>
+              <td className="px-2 py-3 tabular-nums text-rose-900">{fmtMoney(totals.ded)}</td>
               <td className="px-2 py-3 tabular-nums text-teal-900">{fmtMoney(totals.amount)}</td>
               <td className="px-2 py-3 print:hidden" />
             </tr>

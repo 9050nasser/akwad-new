@@ -1,4 +1,5 @@
 import { eachCalendarDay } from "@/lib/day-range";
+import { getPayrollRowForEmployee, getPayrollRows } from "@/lib/payroll";
 import { prisma } from "@/lib/prisma";
 import type { ReportEmployeeFilterParams } from "@/lib/report-employee-filters";
 import { employeeReportWhere, getEmployeesAttendanceDetailReport, type AttendanceDetailRow } from "@/lib/reports";
@@ -52,6 +53,18 @@ export type PayrollOvertimeVsLateDayRow = {
   ratePerMinute: number;
 };
 
+/** إجماليات الفترة كما في تقرير الرواتب (مصدر واحد للدقائق والمبالغ). */
+export type PayrollOvertimeVsLatePeriodTotals = {
+  overtimeMinutes: number;
+  lateMinutes: number;
+  earlyLeaveMinutes: number;
+  shortageMinutes: number;
+  netMinutesOtMinusLate: number;
+  additionAmount: number;
+  deductionAmount: number;
+  netAttendanceAmount: number;
+};
+
 export type PayrollOvertimeVsLateSummaryRow = {
   employeeId: string;
   employeeCode: string;
@@ -61,9 +74,52 @@ export type PayrollOvertimeVsLateSummaryRow = {
   missingPackageSalary: boolean;
   overtimeMinutes: number;
   lateMinutes: number;
+  earlyLeaveMinutes: number;
+  shortageMinutes: number;
+  /** إضافي − تأخير (دقائق) — للعرض فقط. */
   netMinutes: number;
+  additionAmount: number;
+  deductionAmount: number;
+  /** صافي تأثير الحضور = إضافي − خصم حضور (مثل تقرير الرواتب). */
   amount: number;
 };
+
+function summaryRowFromPayroll(
+  pr: Awaited<ReturnType<typeof getPayrollRows>>["rows"][number],
+  employeeCode: string,
+): PayrollOvertimeVsLateSummaryRow {
+  return {
+    employeeId: pr.employeeId,
+    employeeCode,
+    fullName: pr.fullName,
+    branch: pr.branch,
+    ratePerMinute: pr.ratePerMinute,
+    missingPackageSalary: pr.missingPackageSalary,
+    overtimeMinutes: pr.overtimeMinutes,
+    lateMinutes: pr.lateMinutes,
+    earlyLeaveMinutes: pr.earlyLeaveMinutes,
+    shortageMinutes: pr.shortageMinutes,
+    netMinutes: pr.overtimeMinutes - pr.lateMinutes,
+    additionAmount: pr.additionAmount,
+    deductionAmount: pr.deductionAmount,
+    amount: roundMoney(pr.additionAmount - pr.deductionAmount),
+  };
+}
+
+export function payrollPeriodTotalsFromPayrollRow(
+  pr: Awaited<ReturnType<typeof getPayrollRows>>["rows"][number],
+): PayrollOvertimeVsLatePeriodTotals {
+  return {
+    overtimeMinutes: pr.overtimeMinutes,
+    lateMinutes: pr.lateMinutes,
+    earlyLeaveMinutes: pr.earlyLeaveMinutes,
+    shortageMinutes: pr.shortageMinutes,
+    netMinutesOtMinusLate: pr.overtimeMinutes - pr.lateMinutes,
+    additionAmount: pr.additionAmount,
+    deductionAmount: pr.deductionAmount,
+    netAttendanceAmount: roundMoney(pr.additionAmount - pr.deductionAmount),
+  };
+}
 
 function weekdayLabelFor(date: Date): string {
   return new Intl.DateTimeFormat("ar-u-nu-latn", { weekday: "long" }).format(date);
@@ -100,31 +156,6 @@ function mapAttendanceToPayrollDay(
   };
 }
 
-async function loadEmployeeRateMap(params: {
-  companyId: string;
-  branchId?: string;
-  employeeId?: string;
-}): Promise<Map<string, { ratePerMinute: number; missingPackageSalary: boolean }>> {
-  const employees = await prisma.employee.findMany({
-    where: {
-      active: true,
-      branch: { companyId: params.companyId, ...(params.branchId ? { id: params.branchId } : {}) },
-      ...(params.employeeId ? { id: params.employeeId } : {}),
-    },
-    select: {
-      id: true,
-      baseSalaryMonthly: true,
-      allowanceHousingMonthly: true,
-      allowanceTransportMonthly: true,
-    },
-  });
-  const map = new Map<string, { ratePerMinute: number; missingPackageSalary: boolean }>();
-  for (const e of employees) {
-    map.set(e.id, payrollRatePerMinuteFromEmployee(e));
-  }
-  return map;
-}
-
 export async function getPayrollOvertimeVsLateSummary(params: {
   companyId: string;
   from: Date;
@@ -133,60 +164,23 @@ export async function getPayrollOvertimeVsLateSummary(params: {
   employeeFilters?: ReportEmployeeFilterParams;
 }): Promise<{ rows: PayrollOvertimeVsLateSummaryRow[]; periodDays: number; capped: boolean }> {
   const periodDays = eachCalendarDay(params.from, params.to).length;
-  const [{ rows: detailRows, capped }, rateMap, employeesMeta] = await Promise.all([
-    getEmployeesAttendanceDetailReport({
-      ...params,
-      maxRows: 80_000,
-    }),
-    loadEmployeeRateMap(params),
-    prisma.employee.findMany({
-      where: employeeReportWhere(params.companyId, params.branchId, params.employeeFilters),
-      orderBy: { fullName: "asc" },
-      select: { id: true, employeeCode: true, fullName: true, branch: { select: { name: true } } },
-    }),
-  ]);
-
-  const acc = new Map<
-    string,
-    Omit<PayrollOvertimeVsLateSummaryRow, "employeeId" | "employeeCode" | "fullName" | "branch" | "ratePerMinute" | "missingPackageSalary">
-  >();
-
-  for (const r of detailRows) {
-    const rate = rateMap.get(r.employeeId)?.ratePerMinute ?? 0;
-    const netMinutes = r.overtimeMinutes - r.lateMinutes;
-    const prev = acc.get(r.employeeId) ?? {
-      overtimeMinutes: 0,
-      lateMinutes: 0,
-      netMinutes: 0,
-      amount: 0,
-    };
-    prev.overtimeMinutes += r.overtimeMinutes;
-    prev.lateMinutes += r.lateMinutes;
-    prev.netMinutes += netMinutes;
-    prev.amount = roundMoney(prev.amount + netMinutes * rate);
-    acc.set(r.employeeId, prev);
-  }
-
-  const rows: PayrollOvertimeVsLateSummaryRow[] = employeesMeta.map((emp) => {
-    const rateInfo = rateMap.get(emp.id) ?? { ratePerMinute: 0, missingPackageSalary: true };
-    const a = acc.get(emp.id) ?? {
-      overtimeMinutes: 0,
-      lateMinutes: 0,
-      netMinutes: 0,
-      amount: 0,
-    };
-    return {
-      employeeId: emp.id,
-      employeeCode: emp.employeeCode?.trim() || "—",
-      fullName: emp.fullName,
-      branch: emp.branch.name,
-      ratePerMinute: rateInfo.ratePerMinute,
-      missingPackageSalary: rateInfo.missingPackageSalary,
-      ...a,
-    };
+  const { rows: payrollRows } = await getPayrollRows({
+    companyId: params.companyId,
+    from: params.from,
+    to: params.to,
+    branchId: params.branchId,
+    employeeId: undefined,
   });
 
-  return { rows, periodDays, capped };
+  const codes = await prisma.employee.findMany({
+    where: { id: { in: payrollRows.map((r) => r.employeeId) } },
+    select: { id: true, employeeCode: true },
+  });
+  const codeById = new Map(codes.map((c) => [c.id, c.employeeCode?.trim() || "—"]));
+
+  const rows = payrollRows.map((pr) => summaryRowFromPayroll(pr, codeById.get(pr.employeeId) ?? "—"));
+
+  return { rows, periodDays, capped: false };
 }
 
 export async function getPayrollOvertimeVsLateDetail(params: {
@@ -200,6 +194,7 @@ export async function getPayrollOvertimeVsLateDetail(params: {
   periodDays: number;
   ratePerMinute: number;
   missingPackageSalary: boolean;
+  payrollPeriodTotals: PayrollOvertimeVsLatePeriodTotals | null;
 }> {
   const periodDays = eachCalendarDay(params.from, params.to).length;
   const employee = await prisma.employee.findFirst({
@@ -221,8 +216,15 @@ export async function getPayrollOvertimeVsLateDetail(params: {
       periodDays,
       ratePerMinute: 0,
       missingPackageSalary: true,
+      payrollPeriodTotals: null,
     };
   }
+
+  const payrollRow = await getPayrollRowForEmployee(params.employeeId, {
+    companyId: params.companyId,
+    from: params.from,
+    to: params.to,
+  });
 
   const { ratePerMinute, missingPackageSalary } = payrollRatePerMinuteFromEmployee(employee);
   const { rows: detailRows } = await getEmployeesAttendanceDetailReport({
@@ -248,6 +250,7 @@ export async function getPayrollOvertimeVsLateDetail(params: {
     periodDays,
     ratePerMinute,
     missingPackageSalary,
+    payrollPeriodTotals: payrollRow ? payrollPeriodTotalsFromPayrollRow(payrollRow) : null,
   };
 }
 
@@ -259,6 +262,7 @@ export type PayrollOvertimeVsLateDetailBlock = {
   ratePerMinute: number;
   missingPackageSalary: boolean;
   rows: PayrollOvertimeVsLateDayRow[];
+  payrollPeriodTotals: PayrollOvertimeVsLatePeriodTotals | null;
 };
 
 export async function getPayrollOvertimeVsLateDetailAll(params: {
@@ -292,13 +296,22 @@ export async function getPayrollOvertimeVsLateDetailAll(params: {
     rateById.set(emp.id, payrollRatePerMinuteFromEmployee(emp));
   }
 
-  const { rows: detailRows, capped } = await getEmployeesAttendanceDetailReport({
-    companyId: params.companyId,
-    from: params.from,
-    to: params.to,
-    branchId: params.branchId,
-    maxRows: 120_000,
-  });
+  const [{ rows: detailRows, capped }, { rows: payrollRows }] = await Promise.all([
+    getEmployeesAttendanceDetailReport({
+      companyId: params.companyId,
+      from: params.from,
+      to: params.to,
+      branchId: params.branchId,
+      maxRows: 120_000,
+    }),
+    getPayrollRows({
+      companyId: params.companyId,
+      from: params.from,
+      to: params.to,
+      branchId: params.branchId,
+    }),
+  ]);
+  const payrollById = new Map(payrollRows.map((r) => [r.employeeId, r]));
 
   const rowsByEmp = new Map<string, PayrollOvertimeVsLateDayRow[]>();
   for (const r of detailRows) {
@@ -312,6 +325,7 @@ export async function getPayrollOvertimeVsLateDetailAll(params: {
   const blocks: PayrollOvertimeVsLateDetailBlock[] = employees.map((emp) => {
     const rateInfo = rateById.get(emp.id) ?? { ratePerMinute: 0, missingPackageSalary: true };
     const rows = (rowsByEmp.get(emp.id) ?? []).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+    const pr = payrollById.get(emp.id);
     return {
       employeeId: emp.id,
       fullName: emp.fullName,
@@ -320,6 +334,7 @@ export async function getPayrollOvertimeVsLateDetailAll(params: {
       ratePerMinute: rateInfo.ratePerMinute,
       missingPackageSalary: rateInfo.missingPackageSalary,
       rows,
+      payrollPeriodTotals: pr ? payrollPeriodTotalsFromPayrollRow(pr) : null,
     };
   });
 

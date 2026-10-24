@@ -75,6 +75,7 @@ export default async function PayrollOvertimeVsLateDetailPage({
           periodDays: emptyPeriodDays,
           ratePerMinute: 0,
           missingPackageSalary: true,
+          payrollPeriodTotals: null,
         };
 
   const qBack = new URLSearchParams({ from: fromStr, to: toStr });
@@ -85,6 +86,7 @@ export default async function PayrollOvertimeVsLateDetailPage({
   const rows = showAll ? [] : singleData.rows;
   const ratePerMinute = showAll ? 0 : singleData.ratePerMinute;
   const missingPackageSalary = showAll ? true : singleData.missingPackageSalary;
+  const payrollPeriodTotals = showAll ? null : singleData.payrollPeriodTotals;
 
   return (
     <PageFrame exportFileSlug="payroll-ot-minus-late-detail" title="فرق الإضافي من التأخير بالرواتب — تفصيلي">
@@ -201,6 +203,7 @@ export default async function PayrollOvertimeVsLateDetailPage({
                   rows={block.rows}
                   missingPackageSalary={block.missingPackageSalary}
                   fmtMoney={fmtMoney}
+                  payrollPeriodTotals={block.payrollPeriodTotals}
                 />
               </section>
             ))}
@@ -237,6 +240,7 @@ export default async function PayrollOvertimeVsLateDetailPage({
                 rows={rows}
                 missingPackageSalary={missingPackageSalary}
                 fmtMoney={fmtMoney}
+                payrollPeriodTotals={payrollPeriodTotals}
               />
             </div>
           ) : null}
