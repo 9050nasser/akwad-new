@@ -45,6 +45,7 @@ export type NavLabelKey =
   | "total_absence"
   | "total_delays"
   | "payroll"
+  | "payroll_ot_minus_late"
   | "payroll_vacations"
   | "payroll_vacations_report"
   | "payroll_deductions"
@@ -148,6 +149,7 @@ const AR: UiMessages = {
     total_absence: "إجمالي الغياب",
     total_delays: "إجمالي التأخير",
     payroll: "تقرير الرواتب",
+    payroll_ot_minus_late: "فرق الإضافي من التأخير",
     payroll_vacations: "تسجيل إجازات",
     payroll_vacations_report: "تقرير إجازات الموظفين",
     payroll_deductions: "خصومات يدوية",
@@ -261,6 +263,7 @@ const EN: UiMessages = {
     total_absence: "Total absence",
     total_delays: "Total delays",
     payroll: "Payroll report",
+    payroll_ot_minus_late: "Overtime minus late (payroll)",
     payroll_vacations: "Record payroll leave",
     payroll_vacations_report: "Employees on leave (report)",
     payroll_deductions: "Manual deductions",

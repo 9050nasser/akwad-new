@@ -631,6 +631,7 @@ export async function getEmployeesAttendanceDetailReport(params: {
   from: Date;
   to: Date;
   branchId?: string;
+  employeeId?: string;
   employeeFilters?: ReportEmployeeFilterParams;
   maxRows?: number;
 }): Promise<{ rows: AttendanceDetailRow[]; capped: boolean }> {
@@ -638,7 +639,10 @@ export async function getEmployeesAttendanceDetailReport(params: {
   const employeeFilters = params.employeeFilters;
 
   const employees = await prisma.employee.findMany({
-    where: employeeReportWhere(params.companyId, params.branchId, employeeFilters),
+    where: {
+      ...employeeReportWhere(params.companyId, params.branchId, employeeFilters),
+      ...(params.employeeId ? { id: params.employeeId } : {}),
+    },
     orderBy: [{ employeeCode: "asc" }, { fullName: "asc" }],
     include: {
       branch: true,

@@ -91,6 +91,12 @@ export default async function PayrollReportPage({
         <Link href="/reports/payroll/bonuses" className="font-medium text-teal-700 hover:text-teal-900">
           إضافات يدوية
         </Link>
+        <Link
+          href="/reports/payroll/overtime-vs-late"
+          className="font-medium text-teal-700 hover:text-teal-900"
+        >
+          فرق الإضافي من التأخير
+        </Link>
         <a
           href={`/api/payroll/export?${csvQs.toString()}`}
           className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"

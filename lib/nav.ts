@@ -84,6 +84,7 @@ const NAV_STRUCTURE: NavSectionDef[] = [
     sectionKey: "section_payroll",
     items: [
       { key: "payroll", href: "/reports/payroll", iconKey: "wallet" },
+      { key: "payroll_ot_minus_late", href: "/reports/payroll/overtime-vs-late", iconKey: "activity" },
       { key: "payroll_vacations", href: "/reports/payroll/vacations", iconKey: "calendarRange" },
       { key: "payroll_vacations_report", href: "/reports/payroll/vacations/report", iconKey: "users" },
       { key: "payroll_deductions", href: "/reports/payroll/deductions", iconKey: "minusCircle" },
