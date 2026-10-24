@@ -102,7 +102,7 @@ export function dedupePunchSequence<T extends { at: Date; kind: string }>(events
     if (last && e.kind === last.kind) {
       const dt = e.at.getTime() - last.at.getTime();
       if (dt >= 0 && dt <= winMs) {
-        if (e.kind === "CHECK_IN") continue;
+        // لا ندمج CHECK_IN المتتالية: أجهزة كثيرة ترسل كل البصمات كـ «دخول» (دخول صباح، خروج، دخول، خروج).
         if (e.kind === "CHECK_OUT") {
           out[out.length - 1] = e;
         }
@@ -131,7 +131,8 @@ export function pairInOutSequence(events: { at: Date; kind: string }[]): { in?: 
     }
   }
   
-  if (pendingIn) pairs.push({ in: pendingIn });
+  // بصمة أخيرة بلا زوج = خروج (وليس دخول شفت جديد) — شائع عندما كل البصمات CHECK_IN.
+  if (pendingIn) pairs.push({ out: pendingIn });
   return pairs;
 }
 
