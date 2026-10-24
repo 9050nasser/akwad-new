@@ -13,7 +13,9 @@ import {
   getPayrollOvertimeVsLateDetail,
   getPayrollOvertimeVsLateDetailAll,
 } from "@/lib/payroll-overtime-vs-late";
-import { parseRangeFromSearch } from "@/lib/reports";
+import { employeeReportWhere, parseRangeFromSearch } from "@/lib/reports";
+
+const ALL_EMPLOYEES_VALUE = "__ALL__";
 import { prisma } from "@/lib/prisma";
 import { getUiLocale } from "@/lib/ui/prefs";
 import { requireTenantSession } from "@/lib/tenant";
@@ -41,8 +43,9 @@ export default async function PayrollOvertimeVsLateDetailPage({
   const defaults = monthRangeInputs();
   const fromStr = firstQuery(sp.from) ?? defaults.from;
   const toStr = firstQuery(sp.to) ?? defaults.to;
-  const employeeId = firstQuery(sp.employeeId)?.trim() ?? "";
-  const showAll = firstQuery(sp.allEmployees) === "1";
+  const rawEmployeeId = firstQuery(sp.employeeId)?.trim() ?? "";
+  const showAll = firstQuery(sp.allEmployees) === "1" || rawEmployeeId === ALL_EMPLOYEES_VALUE;
+  const employeeId = showAll ? "" : rawEmployeeId;
   const branchId = parseBranchId(firstQuery(sp.branchId), company.defaultReportBranchId);
 
   const locale = await getUiLocale(company.defaultLocale === "en" ? "en" : "ar");
@@ -52,7 +55,7 @@ export default async function PayrollOvertimeVsLateDetailPage({
   const branches = await prisma.branch.findMany({ where: { companyId }, orderBy: { name: "asc" } });
 
   const employees = await prisma.employee.findMany({
-    where: { active: true, branch: { companyId } },
+    where: employeeReportWhere(companyId, branchId),
     orderBy: { fullName: "asc" },
     select: { id: true, fullName: true, employeeCode: true },
   });
@@ -124,11 +127,11 @@ export default async function PayrollOvertimeVsLateDetailPage({
               id="employeeId"
               name="employeeId"
               className={fieldClass}
-              defaultValue={employeeId}
-              required={!showAll}
-              disabled={showAll}
+              defaultValue={showAll ? ALL_EMPLOYEES_VALUE : employeeId}
+              required={false}
             >
-              <option value="">— اختر موظفاً —</option>
+              <option value={ALL_EMPLOYEES_VALUE}>★ كل الموظفين (تفصيلي لكل واحد)</option>
+              <option value="">— موظف واحد: اختر الاسم —</option>
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.fullName}
@@ -137,17 +140,21 @@ export default async function PayrollOvertimeVsLateDetailPage({
               ))}
             </select>
           </div>
-          <div className="md:col-span-4 flex flex-wrap items-center gap-4">
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm hover:bg-slate-50">
+          <div className="md:col-span-4 flex flex-wrap items-end justify-between gap-4">
+            <p className="text-xs text-slate-600">
+              اختر <span className="font-semibold text-teal-800">★ كل الموظفين</span> من القائمة، أو اسم موظف واحد.
+              القائمة تتبع الفرع ({employees.length} موظفاً نشطاً).
+            </p>
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-teal-200 bg-teal-50/80 px-3 py-2 text-sm text-teal-900 shadow-sm">
               <input
                 type="checkbox"
                 name="allEmployees"
                 value="1"
                 defaultChecked={showAll}
-                className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                className="h-4 w-4 rounded border-teal-400 text-teal-600 focus:ring-teal-500"
               />
-              <Users className="h-4 w-4 text-teal-700" aria-hidden />
-              <span className="font-medium">إظهار كل الموظفين (تفصيلي)</span>
+              <Users className="h-4 w-4 shrink-0 text-teal-700" aria-hidden />
+              <span className="font-medium whitespace-nowrap">كل الموظفين (بديل للقائمة)</span>
             </label>
             <PrimaryButton type="submit">عرض</PrimaryButton>
           </div>
