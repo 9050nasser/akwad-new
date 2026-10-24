@@ -132,7 +132,7 @@ export default async function PayrollReportPage({
         </form>
 
         <p className="mt-4 text-xs text-slate-600">
-          الفترة: {formatDateOnly(from)} — {formatDateOnly(to)} ({periodDays} يوماً). عيّن الراتب والبدلات من شاشة الموظفين (قسم الراتب والبدلات) لظهور المبالغ.
+          الفترة: {formatDateOnly(from)} — {formatDateOnly(to)} ({periodDays} يوماً). الراتب والبدلات الشهرية تُنسَب للفترة بحسب أيام كل شهر تقويمي (شهر كامل = الراتب الشهري كاملاً). عيّنها من شاشة الموظفين.
         </p>
       </div>
 

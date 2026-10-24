@@ -74,7 +74,13 @@ export default async function PayrollOvertimeVsLateSummaryPage({
           href={`/reports/payroll/overtime-vs-late/detail?${qBase.toString()}`}
           className="font-medium text-teal-700 hover:text-teal-900"
         >
-          التقرير التفصيلي (اختر موظفاً)
+          التقرير التفصيلي (موظف واحد)
+        </Link>
+        <Link
+          href={`/reports/payroll/overtime-vs-late/detail?${new URLSearchParams({ ...Object.fromEntries(qBase), allEmployees: "1" }).toString()}`}
+          className="font-medium text-teal-700 hover:text-teal-900"
+        >
+          التقرير التفصيلي (كل الموظفين)
         </Link>
       </p>
 

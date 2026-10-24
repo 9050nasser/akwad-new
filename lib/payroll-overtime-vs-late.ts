@@ -250,3 +250,78 @@ export async function getPayrollOvertimeVsLateDetail(params: {
     missingPackageSalary,
   };
 }
+
+export type PayrollOvertimeVsLateDetailBlock = {
+  employeeId: string;
+  fullName: string;
+  employeeCode: string | null;
+  branchName: string;
+  ratePerMinute: number;
+  missingPackageSalary: boolean;
+  rows: PayrollOvertimeVsLateDayRow[];
+};
+
+export async function getPayrollOvertimeVsLateDetailAll(params: {
+  companyId: string;
+  from: Date;
+  to: Date;
+  branchId?: string;
+}): Promise<{ blocks: PayrollOvertimeVsLateDetailBlock[]; periodDays: number; capped: boolean }> {
+  const periodDays = eachCalendarDay(params.from, params.to).length;
+
+  const employees = await prisma.employee.findMany({
+    where: employeeReportWhere(params.companyId, params.branchId, undefined),
+    orderBy: { fullName: "asc" },
+    select: {
+      id: true,
+      fullName: true,
+      employeeCode: true,
+      baseSalaryMonthly: true,
+      allowanceHousingMonthly: true,
+      allowanceTransportMonthly: true,
+      branch: { select: { name: true } },
+    },
+  });
+
+  if (employees.length === 0) {
+    return { blocks: [], periodDays, capped: false };
+  }
+
+  const rateById = new Map<string, { ratePerMinute: number; missingPackageSalary: boolean }>();
+  for (const emp of employees) {
+    rateById.set(emp.id, payrollRatePerMinuteFromEmployee(emp));
+  }
+
+  const { rows: detailRows, capped } = await getEmployeesAttendanceDetailReport({
+    companyId: params.companyId,
+    from: params.from,
+    to: params.to,
+    branchId: params.branchId,
+    maxRows: 120_000,
+  });
+
+  const rowsByEmp = new Map<string, PayrollOvertimeVsLateDayRow[]>();
+  for (const r of detailRows) {
+    const rate = rateById.get(r.employeeId)?.ratePerMinute ?? 0;
+    const mapped = mapAttendanceToPayrollDay(r, rate);
+    const list = rowsByEmp.get(r.employeeId) ?? [];
+    list.push(mapped);
+    rowsByEmp.set(r.employeeId, list);
+  }
+
+  const blocks: PayrollOvertimeVsLateDetailBlock[] = employees.map((emp) => {
+    const rateInfo = rateById.get(emp.id) ?? { ratePerMinute: 0, missingPackageSalary: true };
+    const rows = (rowsByEmp.get(emp.id) ?? []).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+    return {
+      employeeId: emp.id,
+      fullName: emp.fullName,
+      employeeCode: emp.employeeCode,
+      branchName: emp.branch.name,
+      ratePerMinute: rateInfo.ratePerMinute,
+      missingPackageSalary: rateInfo.missingPackageSalary,
+      rows,
+    };
+  });
+
+  return { blocks, periodDays, capped };
+}

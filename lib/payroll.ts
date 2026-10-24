@@ -83,6 +83,25 @@ function roundMoney(n: number) {
   return Math.round(n * 100) / 100;
 }
 
+/** أيام الشهر التقويمي (28–31) حسب سنة/شهر اليوم. */
+function calendarDaysInMonth(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+}
+
+/**
+ * جزء من مبلغ شهري ثابت للفترة [from..to]: كل يوم = (الشهري ÷ أيام ذلك الشهر).
+ * شهر كامل (28/30/31) يعطي المبلغ الشهري كاملاً بدون زيادة لـ 31 يوماً.
+ */
+export function proportionalMonthlyAmountForPeriod(monthlyAmount: number, from: Date, to: Date): number {
+  if (!Number.isFinite(monthlyAmount) || monthlyAmount <= 0) return 0;
+  let sum = 0;
+  for (const d of eachCalendarDay(from, to)) {
+    const dim = calendarDaysInMonth(d);
+    if (dim > 0) sum += monthlyAmount / dim;
+  }
+  return roundMoney(sum);
+}
+
 export async function getPayrollRows(params: {
   companyId: string;
   from: Date;
@@ -217,9 +236,15 @@ export async function getPayrollRows(params: {
     const packageMonthly = roundMoney(baseNum + housingNum + transportNum);
     const missingPackageSalary = packageMonthly <= 0;
     const ratePerMinute = missingPackageSalary ? 0 : packageMonthly / MINUTES_IN_MONTH_NORM;
-    const baseProportional = missingPackageSalary ? 0 : roundMoney((baseNum * periodDays) / 30);
-    const allowanceHousingProportional = missingPackageSalary ? 0 : roundMoney((housingNum * periodDays) / 30);
-    const allowanceTransportProportional = missingPackageSalary ? 0 : roundMoney((transportNum * periodDays) / 30);
+    const baseProportional = missingPackageSalary
+      ? 0
+      : proportionalMonthlyAmountForPeriod(baseNum, params.from, params.to);
+    const allowanceHousingProportional = missingPackageSalary
+      ? 0
+      : proportionalMonthlyAmountForPeriod(housingNum, params.from, params.to);
+    const allowanceTransportProportional = missingPackageSalary
+      ? 0
+      : proportionalMonthlyAmountForPeriod(transportNum, params.from, params.to);
     const grossFixedProportional = roundMoney(
       baseProportional + allowanceHousingProportional + allowanceTransportProportional,
     );

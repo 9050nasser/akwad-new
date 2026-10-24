@@ -1,23 +1,31 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Users } from "lucide-react";
 import { PageFrame } from "@/components/page-frame";
+import { PayrollOtMinusLateDetailTable } from "@/components/reports/payroll-ot-minus-late-detail-table";
 import { Label, PrimaryButton, fieldClass } from "@/components/ui-fields";
 import { eachCalendarDay } from "@/lib/day-range";
 import { monthRangeInputs } from "@/lib/default-range";
 import { firstQuery } from "@/lib/flash";
-import {
-  formatDateOnly,
-  formatDurationMinutes,
-  formatReportDateOnly,
-  formatReportTimeOnly,
-  formatSignedDurationMinutes,
-} from "@/lib/format";
+import { formatDateOnly } from "@/lib/format";
 import { formatCompanyMoney } from "@/lib/company-settings";
-import { getPayrollOvertimeVsLateDetail } from "@/lib/payroll-overtime-vs-late";
+import {
+  getPayrollOvertimeVsLateDetail,
+  getPayrollOvertimeVsLateDetailAll,
+} from "@/lib/payroll-overtime-vs-late";
 import { parseRangeFromSearch } from "@/lib/reports";
 import { prisma } from "@/lib/prisma";
 import { getUiLocale } from "@/lib/ui/prefs";
 import { requireTenantSession } from "@/lib/tenant";
+
+function parseBranchId(
+  rawBranch: string | undefined,
+  defaultReportBranchId: string | null,
+): string | undefined {
+  if (rawBranch === undefined) return defaultReportBranchId ?? undefined;
+  if (rawBranch === "") return undefined;
+  return rawBranch;
+}
 
 export default async function PayrollOvertimeVsLateDetailPage({
   searchParams,
@@ -34,10 +42,14 @@ export default async function PayrollOvertimeVsLateDetailPage({
   const fromStr = firstQuery(sp.from) ?? defaults.from;
   const toStr = firstQuery(sp.to) ?? defaults.to;
   const employeeId = firstQuery(sp.employeeId)?.trim() ?? "";
+  const showAll = firstQuery(sp.allEmployees) === "1";
+  const branchId = parseBranchId(firstQuery(sp.branchId), company.defaultReportBranchId);
 
   const locale = await getUiLocale(company.defaultLocale === "en" ? "en" : "ar");
   const fmtMoney = (n: number) => formatCompanyMoney(company, n, locale);
   const { from, to } = parseRangeFromSearch(fromStr, toStr);
+
+  const branches = await prisma.branch.findMany({ where: { companyId }, orderBy: { name: "asc" } });
 
   const employees = await prisma.employee.findMany({
     where: { active: true, branch: { companyId } },
@@ -46,28 +58,30 @@ export default async function PayrollOvertimeVsLateDetailPage({
   });
 
   const emptyPeriodDays = eachCalendarDay(from, to).length;
-  const { employee, rows, periodDays, ratePerMinute, missingPackageSalary } = employeeId
-    ? await getPayrollOvertimeVsLateDetail({ companyId, employeeId, from, to })
-    : {
-        employee: null,
-        rows: [],
-        periodDays: emptyPeriodDays,
-        ratePerMinute: 0,
-        missingPackageSalary: true,
-      };
+
+  const allData = showAll
+    ? await getPayrollOvertimeVsLateDetailAll({ companyId, from, to, branchId })
+    : null;
+
+  const singleData =
+    !showAll && employeeId
+      ? await getPayrollOvertimeVsLateDetail({ companyId, employeeId, from, to })
+      : {
+          employee: null,
+          rows: [],
+          periodDays: emptyPeriodDays,
+          ratePerMinute: 0,
+          missingPackageSalary: true,
+        };
 
   const qBack = new URLSearchParams({ from: fromStr, to: toStr });
+  if (branchId) qBack.set("branchId", branchId);
 
-  const totals = rows.reduce(
-    (acc, r) => {
-      acc.ot += r.overtimeMinutes;
-      acc.late += r.lateMinutes;
-      acc.net += r.netMinutes;
-      acc.amount += r.amount;
-      return acc;
-    },
-    { ot: 0, late: 0, net: 0, amount: 0 },
-  );
+  const periodDays = showAll ? (allData?.periodDays ?? emptyPeriodDays) : singleData.periodDays;
+  const employee = showAll ? null : singleData.employee;
+  const rows = showAll ? [] : singleData.rows;
+  const ratePerMinute = showAll ? 0 : singleData.ratePerMinute;
+  const missingPackageSalary = showAll ? true : singleData.missingPackageSalary;
 
   return (
     <PageFrame exportFileSlug="payroll-ot-minus-late-detail" title="فرق الإضافي من التأخير بالرواتب — تفصيلي">
@@ -93,9 +107,27 @@ export default async function PayrollOvertimeVsLateDetailPage({
             <Label htmlFor="to">إلى</Label>
             <input id="to" name="to" type="date" className={fieldClass} defaultValue={toStr} />
           </div>
-          <div className="md:col-span-2">
+          <div>
+            <Label htmlFor="branchId">الفرع</Label>
+            <select id="branchId" name="branchId" className={fieldClass} defaultValue={branchId ?? ""}>
+              <option value="">كل الفروع</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
             <Label htmlFor="employeeId">الموظف</Label>
-            <select id="employeeId" name="employeeId" className={fieldClass} defaultValue={employeeId} required>
+            <select
+              id="employeeId"
+              name="employeeId"
+              className={fieldClass}
+              defaultValue={employeeId}
+              required={!showAll}
+              disabled={showAll}
+            >
               <option value="">— اختر موظفاً —</option>
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>
@@ -105,92 +137,104 @@ export default async function PayrollOvertimeVsLateDetailPage({
               ))}
             </select>
           </div>
-          <div className="md:col-span-4 flex items-end">
+          <div className="md:col-span-4 flex flex-wrap items-center gap-4">
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm hover:bg-slate-50">
+              <input
+                type="checkbox"
+                name="allEmployees"
+                value="1"
+                defaultChecked={showAll}
+                className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+              />
+              <Users className="h-4 w-4 text-teal-700" aria-hidden />
+              <span className="font-medium">إظهار كل الموظفين (تفصيلي)</span>
+            </label>
             <PrimaryButton type="submit">عرض</PrimaryButton>
           </div>
         </form>
       </div>
 
-      {employee ? (
-        <div className="mt-4 space-y-1 text-sm text-slate-800">
-          <p>
-            <span className="font-semibold">الموظف:</span> {employee.fullName}
-            <span className="mx-2 text-slate-400">|</span>
-            <span className="font-semibold">الكود:</span> {employee.employeeCode?.trim() || "—"}
-            <span className="mx-2 text-slate-400">|</span>
-            <span className="font-semibold">الفرع:</span> {employee.branchName}
+      {showAll ? (
+        <>
+          <p className="mt-4 text-sm text-slate-800">
+            من {formatDateOnly(from)} إلى {formatDateOnly(to)} ({periodDays} يوماً)
+            {branchId ? (
+              <>
+                {" "}
+                — الفرع: {branches.find((b) => b.id === branchId)?.name ?? "—"}
+              </>
+            ) : (
+              " — كل الفروع"
+            )}
+            . عدد الموظفين: {allData?.blocks.length ?? 0}.
           </p>
-          <p className="text-xs text-slate-600">
-            من {formatDateOnly(from)} إلى {formatDateOnly(to)} ({periodDays} يوماً). معامل الساعة: ساعة بساعة — قيمة
-            الدقيقة: {missingPackageSalary ? "—" : fmtMoney(ratePerMinute)}.
-          </p>
-        </div>
-      ) : employeeId ? (
-        <p className="mt-4 text-sm text-rose-800">لم يُعثر على الموظف.</p>
+          {allData?.capped ? (
+            <p className="mt-2 text-sm text-amber-800">تم اقتصار النتائج على الحد الأقصى للصفوف؛ قد تكون البيانات ناقصة.</p>
+          ) : null}
+          <div className="mt-6 space-y-10">
+            {(allData?.blocks ?? []).map((block, idx, arr) => (
+              <section
+                key={block.employeeId}
+                className={idx < arr.length - 1 ? "print:break-after-page" : undefined}
+              >
+                <div className="mb-3 space-y-1 text-sm text-slate-800">
+                  <p>
+                    <span className="font-semibold">الموظف:</span> {block.fullName}
+                    <span className="mx-2 text-slate-400">|</span>
+                    <span className="font-semibold">الكود:</span> {block.employeeCode?.trim() || "—"}
+                    <span className="mx-2 text-slate-400">|</span>
+                    <span className="font-semibold">الفرع:</span> {block.branchName}
+                  </p>
+                  <p className="text-xs text-slate-600">
+                    قيمة الدقيقة:{" "}
+                    {block.missingPackageSalary ? "—" : fmtMoney(block.ratePerMinute)}.
+                  </p>
+                </div>
+                <PayrollOtMinusLateDetailTable
+                  rows={block.rows}
+                  missingPackageSalary={block.missingPackageSalary}
+                  fmtMoney={fmtMoney}
+                />
+              </section>
+            ))}
+          </div>
+          {(allData?.blocks.length ?? 0) === 0 ? (
+            <p className="mt-4 text-sm text-slate-600">لا يوجد موظفون في هذا الفرع.</p>
+          ) : null}
+        </>
       ) : (
-        <p className="mt-4 text-sm text-slate-600">اختر موظفاً ثم اضغط «عرض».</p>
-      )}
+        <>
+          {employee ? (
+            <div className="mt-4 space-y-1 text-sm text-slate-800">
+              <p>
+                <span className="font-semibold">الموظف:</span> {employee.fullName}
+                <span className="mx-2 text-slate-400">|</span>
+                <span className="font-semibold">الكود:</span> {employee.employeeCode?.trim() || "—"}
+                <span className="mx-2 text-slate-400">|</span>
+                <span className="font-semibold">الفرع:</span> {employee.branchName}
+              </p>
+              <p className="text-xs text-slate-600">
+                من {formatDateOnly(from)} إلى {formatDateOnly(to)} ({periodDays} يوماً). معامل الساعة: ساعة بساعة — قيمة
+                الدقيقة: {missingPackageSalary ? "—" : fmtMoney(ratePerMinute)}.
+              </p>
+            </div>
+          ) : employeeId ? (
+            <p className="mt-4 text-sm text-rose-800">لم يُعثر على الموظف.</p>
+          ) : (
+            <p className="mt-4 text-sm text-slate-600">اختر موظفاً أو فعّل «إظهار كل الموظفين» ثم اضغط «عرض».</p>
+          )}
 
-      {employee && rows.length > 0 ? (
-        <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200">
-          <table className="min-w-full text-right text-sm">
-            <thead className="bg-slate-50 text-[0.65rem] font-semibold uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-2 py-3">التاريخ</th>
-                <th className="px-2 py-3">اليوم</th>
-                <th className="px-2 py-3">الحضور</th>
-                <th className="px-2 py-3">الانصراف</th>
-                <th className="px-2 py-3">الإضافي</th>
-                <th className="px-2 py-3">التأخير</th>
-                <th className="px-2 py-3 whitespace-nowrap">فرق الدقائق</th>
-                <th className="px-2 py-3">المبلغ</th>
-                <th className="px-2 py-3">ملاحظات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {rows.map((r) => (
-                <tr key={r.dateKey} className="hover:bg-slate-50/80">
-                  <td className="px-2 py-3 tabular-nums text-slate-800">{formatReportDateOnly(r.date)}</td>
-                  <td className="px-2 py-3 text-slate-600">{r.weekdayLabel}</td>
-                  <td className="px-2 py-3 tabular-nums font-semibold text-slate-900 print:text-[0.65rem]">
-                    {r.checkInAt ? formatReportTimeOnly(r.checkInAt) : "—"}
-                  </td>
-                  <td className="px-2 py-3 tabular-nums font-semibold text-slate-900 print:text-[0.65rem]">
-                    {r.checkOutAt ? formatReportTimeOnly(r.checkOutAt) : "—"}
-                  </td>
-                  <td className="px-2 py-3 tabular-nums text-emerald-700">
-                    {formatDurationMinutes(r.overtimeMinutes)}
-                  </td>
-                  <td className="px-2 py-3 tabular-nums text-rose-700">{formatDurationMinutes(r.lateMinutes)}</td>
-                  <td className="px-2 py-3 tabular-nums text-slate-800">
-                    {formatSignedDurationMinutes(r.netMinutes)}
-                  </td>
-                  <td
-                    className={`px-2 py-3 tabular-nums font-medium ${r.amount >= 0 ? "text-emerald-800" : "text-rose-800"}`}
-                  >
-                    {missingPackageSalary ? "—" : fmtMoney(r.amount)}
-                  </td>
-                  <td className="px-2 py-3 text-xs text-slate-600">{r.dayNote ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="border-t-2 border-slate-200 bg-slate-50 text-xs font-semibold text-slate-900">
-              <tr>
-                <td colSpan={4} className="px-2 py-3">
-                  إجمالي الفترة
-                </td>
-                <td className="px-2 py-3 tabular-nums text-emerald-800">{formatDurationMinutes(totals.ot)}</td>
-                <td className="px-2 py-3 tabular-nums text-rose-800">{formatDurationMinutes(totals.late)}</td>
-                <td className="px-2 py-3 tabular-nums">{formatSignedDurationMinutes(totals.net)}</td>
-                <td className="px-2 py-3 tabular-nums text-teal-900">
-                  {missingPackageSalary ? "—" : fmtMoney(totals.amount)}
-                </td>
-                <td className="px-2 py-3" />
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      ) : null}
+          {employee ? (
+            <div className="mt-6">
+              <PayrollOtMinusLateDetailTable
+                rows={rows}
+                missingPackageSalary={missingPackageSalary}
+                fmtMoney={fmtMoney}
+              />
+            </div>
+          ) : null}
+        </>
+      )}
     </PageFrame>
   );
 }
