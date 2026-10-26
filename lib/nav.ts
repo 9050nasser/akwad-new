@@ -53,6 +53,7 @@ const NAV_STRUCTURE: NavSectionDef[] = [
       { key: "post", href: "/operations/post", iconKey: "fileBarChart2" },
       { key: "unpost", href: "/operations/unpost", iconKey: "logOut" },
       { key: "edit_movements", href: "/operations/edit-movements", iconKey: "monitorSmartphone" },
+      { key: "transfer_biometric", href: "/operations/transfer-biometric", iconKey: "monitorSmartphone" },
     ],
   },
   {

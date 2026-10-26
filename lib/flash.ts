@@ -42,6 +42,12 @@ const ERR: Record<string, string> = {
   restore_too_large: "ملف النسخة أكبر من الحد المسموح.",
   restore_failed: "تعذر استعادة الملف. حاول مرة أخرى أو استعد يدوياً من نسخة .pre-restore-* إن وُجدت.",
   password_mismatch: "كلمة المرور الجديدة وتأكيدها غير متطابقين.",
+  employee: "الموظف المختار غير موجود أو لا يخص شركتك.",
+  bio_type: "اختر نوعاً واحداً على الأقل: بصمة إصبع أو وجه.",
+  bio_pin: "الموظف لا يملك رقم مستخدم ZK — اضبطه من شاشة الموظفين.",
+  bio_source: "جهاز البصمة المصدر غير صالح أو بدون سيريال.",
+  bio_target: "اختر جهاز البصمة الهدف.",
+  bio_target_empty: "لا توجد أجهزة بصمة هدف متاحة.",
 };
 
 export function formatFlash(sp: Record<string, string | string[] | undefined>) {
@@ -86,6 +92,13 @@ export function formatFlash(sp: Record<string, string | string[] | undefined>) {
   }
   if (noticeKey === "user") {
     return { notice: "تم تحديث بيانات مستخدم الدخول.", error: undefined as string | undefined };
+  }
+  if (noticeKey === "bio_queued") {
+    return {
+      notice:
+        "تم تسجيل طلب النقل وإرسال الأوامر. عند اتصال جهاز البصمة المصدر بالسيرفر تُسحب القوالب ثم تُرسل للأجهزة المختارة.",
+      error: undefined as string | undefined,
+    };
   }
 
   return { notice: undefined as string | undefined, error: undefined as string | undefined };

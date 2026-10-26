@@ -5,6 +5,7 @@ import { parseZkAttlogBody } from "@/lib/iclock-parse-attlog";
 import { getAttlogStamp, setAttlogStamp } from "@/lib/iclock-stamps";
 import { prisma } from "@/lib/prisma";
 import { applyZkPunchesToDevice } from "@/lib/zk-apply-punches";
+import { ingestOperlogForDevice } from "@/lib/biometric-transfer";
 
 function textResponse(body: string, status = 200) {
   return new Response(body, {
@@ -28,7 +29,7 @@ function handshakeBody(sn: string) {
     `Delay=10`,
     `TransTimes=00:00;23:59`,
     `TransInterval=1`,
-    `TransFlag=TransData AttLog`,
+    `TransFlag=TransData AttLog OpLog EnrollUser EnrollFP EnrollFace USERPIC`,
     `TimeZone=${tz}`,
     `Realtime=1`,
     `ServerVer=2.2.14`,
@@ -57,8 +58,26 @@ export async function handleIclockPostAttlog(request: NextRequest) {
     return textResponse("OK:0");
   }
 
-  const table = url.searchParams.get("table")?.toUpperCase();
+  const table = url.searchParams.get("table")?.toUpperCase() ?? "";
   if (table && table !== "ATTLOG") {
+    if (["OPERLOG", "USERINFO", "BIODATA", "FACE", "FINGERTMP"].includes(table)) {
+      let buf = Buffer.from(await request.arrayBuffer());
+      const enc = request.headers.get("content-encoding") ?? "";
+      if (enc.toLowerCase().includes("gzip")) {
+        try {
+          buf = Buffer.from(gunzipSync(buf));
+        } catch {
+          return textResponse("OK:0");
+        }
+      }
+      try {
+        const n = await ingestOperlogForDevice(sn, buf.toString("utf8"));
+        return textResponse(`OK:${n}`);
+      } catch (e) {
+        console.error("[iclock] operlog ingest", e);
+        return textResponse("OK:0");
+      }
+    }
     return textResponse("OK:0");
   }
 

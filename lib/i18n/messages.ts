@@ -27,6 +27,7 @@ export type NavLabelKey =
   | "post"
   | "unpost"
   | "edit_movements"
+  | "transfer_biometric"
   | "reports_hub"
   | "daily_status"
   | "employees_detail"
@@ -131,6 +132,7 @@ const AR: UiMessages = {
     post: "ترحيل الحركات",
     unpost: "إلغاء ترحيل حركات",
     edit_movements: "إضافة / تعديل حركات",
+    transfer_biometric: "نقل بصمة بين أجهزة البصمة",
     reports_hub: "كل التقارير",
     daily_status: "حالة اليوم",
     employees_detail: "الحضور والانصراف تفصيلي",
@@ -245,6 +247,7 @@ const EN: UiMessages = {
     post: "Post movements",
     unpost: "Unpost movements",
     edit_movements: "Add / edit movements",
+    transfer_biometric: "Transfer biometric between devices",
     reports_hub: "All reports",
     daily_status: "Today’s status",
     employees_detail: "Attendance in/out (detail)",

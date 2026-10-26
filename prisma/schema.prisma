@@ -448,7 +448,40 @@ model User {
   @@unique([companyId, email])
 }
 
-// ضيف الموديل ده في آخر ملف prisma/schema.prisma
+model BiometricTransfer {
+  id              String   @id @default(cuid())
+  companyId       String
+  employeeId      String
+  employeeName    String
+  pin             String
+  sourceDeviceId  String
+  sourceDeviceSn  String
+  includeFinger   Boolean  @default(true)
+  includeFace     Boolean  @default(true)
+  targetMode      String
+  targetDeviceSns String
+  status          String   @default("WAITING_DATA")
+  note            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  templates       BiometricTemplate[]
+
+  @@index([companyId, createdAt])
+  @@index([sourceDeviceSn, pin, status])
+}
+
+model BiometricTemplate {
+  id         String            @id @default(cuid())
+  transferId String
+  transfer   BiometricTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  kind       String
+  fid        Int               @default(0)
+  command    String
+  createdAt  DateTime          @default(now())
+
+  @@unique([transferId, kind, fid])
+}
+
 model DeviceCommand {
   id        Int      @id @default(autoincrement()) // هنستخدمه كـ Command_ID لبروتوكول ZK
   deviceSn  String   // السيريال نمبر بتاع الجهاز
