@@ -651,7 +651,6 @@ export async function getEmployeesAttendanceDetailReport(params: {
   employeeFilters?: ReportEmployeeFilterParams;
   maxRows?: number;
 }): Promise<{ rows: AttendanceDetailRow[]; capped: boolean }> {
-  const maxRows = params.maxRows ?? 4000;
   const employeeFilters = params.employeeFilters;
 
   const employees = await prisma.employee.findMany({
@@ -740,6 +739,11 @@ export async function getEmployeesAttendanceDetailReport(params: {
   ]);
 
   const days = eachCalendarDay(params.from, params.to);
+  const ATTENDANCE_DETAIL_ROW_CEILING = 250_000;
+  const maxRows =
+    params.maxRows ??
+    Math.min(ATTENDANCE_DETAIL_ROW_CEILING, employees.length * days.length + 64);
+
   const onLeaveEmpDay = new Set<string>();
   const leaveNoteByEmpDay = new Map<string, string>();
   for (const l of leaves) {
